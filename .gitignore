@@ -1,0 +1,33 @@
+# dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# env
+.env
+.env.local
+.env.*.local
+
+# build output
+dist/
+build/
+.vite/
+
+# logs
+logs/
+*.log
+npm-debug.log*
+
+# uploads (local file storage)
+api/uploads/*
+!api/uploads/.gitkeep
+
+# editor / os
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# misc
+coverage/
+*.tsbuildinfo

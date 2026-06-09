@@ -1,0 +1,161 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  DEVELOPER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketStatus {
+  NEW
+  OPEN
+  IN_PROGRESS
+  ON_HOLD
+  IN_REVIEW
+  RESOLVED
+  CLOSED
+  REJECTED
+  REOPENED
+}
+
+enum ActivityType {
+  CREATED
+  STATUS_CHANGED
+  PRIORITY_CHANGED
+  ASSIGNED
+  COMMENTED
+  REOPENED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(CUSTOMER)
+  department   String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  requestedTickets Ticket[]       @relation("Requester")
+  assignedTickets  Ticket[]       @relation("Assignee")
+  comments         Comment[]
+  activities       Activity[]
+  notifications    Notification[]
+}
+
+model Category {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  defaultTeam     String?
+  defaultSlaHours Int      @default(48)
+  createdAt       DateTime @default(now())
+
+  tickets Ticket[]
+}
+
+model Ticket {
+  id          String       @id @default(cuid())
+  key         String       @unique // e.g. UNIV-101
+  title       String
+  description String
+  status      TicketStatus @default(NEW)
+  priority    Priority     @default(MEDIUM)
+
+  category    Category? @relation(fields: [categoryId], references: [id])
+  categoryId  String?
+
+  requester   User    @relation("Requester", fields: [requesterId], references: [id])
+  requesterId String
+
+  assignee    User?   @relation("Assignee", fields: [assigneeId], references: [id])
+  assigneeId  String?
+
+  slaDueAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  comments    Comment[]
+  attachments Attachment[]
+  activities  Activity[]
+
+  @@index([status])
+  @@index([assigneeId])
+  @@index([requesterId])
+}
+
+model Comment {
+  id         String   @id @default(cuid())
+  ticket     Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId   String
+  author     User     @relation(fields: [authorId], references: [id])
+  authorId   String
+  body       String
+  isInternal Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  attachments Attachment[]
+}
+
+model Attachment {
+  id         String   @id @default(cuid())
+  ticket     Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId   String
+  comment    Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  commentId  String?
+  fileName   String
+  filePath   String
+  mimeType   String?
+  size       Int?
+  uploadedById String
+  createdAt  DateTime @default(now())
+}
+
+model Activity {
+  id        String       @id @default(cuid())
+  ticket    Ticket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId  String
+  actor     User         @relation(fields: [actorId], references: [id])
+  actorId   String
+  type      ActivityType
+  fromValue String?
+  toValue   String?
+  createdAt DateTime     @default(now())
+
+  @@index([ticketId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  ticketId  String?
+  type      String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+}
+
+// Auto-increment counter for human-friendly ticket keys (UNIV-101, ...)
+model Counter {
+  id    String @id
+  value Int    @default(0)
+}

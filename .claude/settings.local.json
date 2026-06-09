@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(start \"\" \"d:/EimpleLabs/Projects/currentproject/issuetracker/mockups.html\")",
+      "Bash(npm -v)",
+      "Bash(git --version)",
+      "Bash(docker -v)",
+      "Bash(psql --version)",
+      "Bash(git init *)",
+      "Bash(git branch *)",
+      "Bash(npm --workspace api run db:generate)",
+      "Bash(PGPASSWORD=\"\" psql -U postgres -h localhost -d postgres -c \"select version\\(\\);\")",
+      "Bash(npx prisma *)",
+      "Bash(curl -s http://localhost:5173/api/health)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" -X POST http://localhost:5173/api/auth/login -H \"Content-Type: application/json\" -d '{\"email\":\"superadmin@university.edu\",\"password\":\"Admin@123\"}')"
+    ]
+  }
+}

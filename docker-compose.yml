@@ -1,0 +1,64 @@
+# Full stack: db + api + web.
+#   docker compose up --build
+# Then open http://localhost:8080  (Super Admin: superadmin@university.edu / Admin@123)
+services:
+  db:
+    image: postgres:17
+    container_name: tracking_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tracking
+      POSTGRES_PASSWORD: tracking
+      POSTGRES_DB: tracking
+    ports:
+      - "5432:5432"
+    volumes:
+      - tracking_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tracking"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ./api
+    container_name: tracking_api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://tracking:tracking@db:5432/tracking?schema=public"
+      PORT: "4100"
+      NODE_ENV: "production"
+      CLIENT_URL: "http://localhost:8080"
+      JWT_ACCESS_SECRET: "change-me-access"
+      JWT_REFRESH_SECRET: "change-me-refresh"
+      ACCESS_TOKEN_TTL: "15m"
+      REFRESH_TOKEN_TTL: "7d"
+      # Optional SMTP — leave SMTP_HOST empty to log emails instead of sending.
+      SMTP_HOST: ""
+      SMTP_PORT: "587"
+      SMTP_USER: ""
+      SMTP_PASS: ""
+      MAIL_FROM: "Tracking System <no-reply@university.edu>"
+      SEED_SUPERADMIN_EMAIL: "superadmin@university.edu"
+      SEED_SUPERADMIN_PASSWORD: "Admin@123"
+      SEED_SUPERADMIN_NAME: "Super Admin"
+    volumes:
+      - tracking_uploads:/app/uploads
+
+  web:
+    build:
+      context: ./web
+    container_name: tracking_web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+
+volumes:
+  tracking_pgdata:
+  tracking_uploads:
