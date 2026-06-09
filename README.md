@@ -17,9 +17,11 @@ to closure. See [PLAN.md](PLAN.md) for the full plan and [mockups.html](mockups.
 
 ## Setup
 
+
 ```bash
 # 1. Install all workspaces
 npm install
+
 
 # 2. Configure the API environment
 #    copy api/.env.example -> api/.env and set DATABASE_URL + secrets
