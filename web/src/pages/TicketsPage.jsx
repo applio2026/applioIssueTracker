@@ -63,6 +63,7 @@ export default function TicketsPage() {
             <tr className="border-b-2 border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400">
               <th className="px-4 py-3">Key</th>
               <th className="px-4 py-3">Subject</th>
+              <th className="px-4 py-3">Label</th>
               <th className="px-4 py-3">Category</th>
               <th className="px-4 py-3">Priority</th>
               <th className="px-4 py-3">Status</th>
@@ -71,14 +72,17 @@ export default function TicketsPage() {
             </tr>
           </thead>
           <tbody>
-            {isLoading && <tr><td colSpan="7" className="px-4 py-8 text-center text-slate-400">Loading…</td></tr>}
+            {isLoading && <tr><td colSpan="8" className="px-4 py-8 text-center text-slate-400">Loading…</td></tr>}
             {!isLoading && tickets?.length === 0 && (
-              <tr><td colSpan="7" className="px-4 py-8 text-center text-slate-400">No tickets yet.</td></tr>
+              <tr><td colSpan="8" className="px-4 py-8 text-center text-slate-400">No tickets yet.</td></tr>
             )}
             {tickets?.map((t) => (
               <tr key={t.id} onClick={() => navigate(`/tickets/${t.id}`)} className="cursor-pointer border-b border-slate-100 hover:bg-slate-50">
                 <td className="px-4 py-3 font-mono text-xs font-semibold text-slate-500">{t.key}</td>
                 <td className="px-4 py-3 font-medium text-slate-700">{t.title}</td>
+                <td className="px-4 py-3">
+                  <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{t.label}</span>
+                </td>
                 <td className="px-4 py-3 text-slate-500">{t.category?.name || '—'}</td>
                 <td className="px-4 py-3"><PriorityBadge priority={t.priority} /></td>
                 <td className="px-4 py-3"><StatusBadge status={t.status} /></td>

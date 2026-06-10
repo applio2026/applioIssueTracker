@@ -9,6 +9,10 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 export function createApp() {
   const app = express();
 
+  // Behind the nginx proxy in production — needed so rate limiting sees the
+  // real client IP from X-Forwarded-For instead of the proxy's.
+  app.set('trust proxy', 1);
+
   app.use(cors({ origin: env.clientUrl, credentials: true }));
   app.use(express.json());
   app.use(cookieParser());

@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import LoginPage from './pages/LoginPage.jsx';
+import SsoPage from './pages/SsoPage.jsx';
 import UsersPage from './pages/UsersPage.jsx';
 import TicketsPage from './pages/TicketsPage.jsx';
 import TicketDetailPage from './pages/TicketDetailPage.jsx';
@@ -12,6 +13,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/sso" element={<SsoPage />} />
 
       <Route
         path="/tickets"

@@ -1,7 +1,7 @@
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../features/auth/useAuth.js';
-import Recaptcha from '../components/Recaptcha.jsx';
+import { api } from '../api/client.js';
 
 export default function LoginPage() {
   const { login, isAuthenticated } = useAuth();
@@ -9,10 +9,26 @@ export default function LoginPage() {
   const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [captchaToken, setCaptchaToken] = useState('');
+  const [captcha, setCaptcha] = useState(null); // { captchaId, question }
+  const [answer, setAnswer] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const recaptchaRef = useRef(null);
+
+  // Challenges are single-use and short-lived, so fetch a fresh one on mount
+  // and after every failed attempt.
+  const loadCaptcha = useCallback(async () => {
+    setAnswer('');
+    try {
+      const { data } = await api.get('/auth/captcha');
+      setCaptcha(data);
+    } catch {
+      setCaptcha(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadCaptcha();
+  }, [loadCaptcha]);
 
   if (isAuthenticated) return <Navigate to="/" replace />;
 
@@ -21,17 +37,13 @@ export default function LoginPage() {
   const onSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!captchaToken) {
-      setError('Please confirm you are not a robot.');
-      return;
-    }
     setLoading(true);
     try {
-      await login(email, password, captchaToken);
+      await login(email, password, { captchaId: captcha?.captchaId, captchaAnswer: answer });
       navigate(from, { replace: true });
     } catch (err) {
       setError(err.response?.data?.error || 'Unable to sign in. Please try again.');
-      recaptchaRef.current?.reset();
+      loadCaptcha();
     } finally {
       setLoading(false);
     }
@@ -51,8 +63,7 @@ export default function LoginPage() {
       {/* Form */}
       <div className="flex flex-1 items-center justify-center p-8">
         <form onSubmit={onSubmit} className="w-full max-w-xs">
-          <h2 className="text-xl font-bold text-slate-800">Sign in</h2>
-          <p className="mb-6 mt-1 text-sm text-slate-400">Use the credentials provided to you</p>
+          <h2 className="mb-6 text-xl font-bold text-slate-800">Sign in</h2>
 
           {error && (
             <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
@@ -75,24 +86,39 @@ export default function LoginPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
-            className="mb-5 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand"
+            className="mb-4 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand"
           />
 
-          <div className="mb-5">
-            <Recaptcha ref={recaptchaRef} onChange={setCaptchaToken} />
+          <label className="mb-1 block text-xs font-semibold text-slate-500">Security Check</label>
+          <div className="mb-5 flex items-center gap-2">
+            <span className="rounded-lg bg-slate-100 px-3 py-2.5 font-mono text-sm font-semibold text-slate-700">
+              {captcha ? `${captcha.question} =` : '…'}
+            </span>
+            <input
+              required
+              inputMode="numeric"
+              value={answer}
+              onChange={(e) => setAnswer(e.target.value)}
+              placeholder="?"
+              className="w-16 rounded-lg border border-slate-200 px-3 py-2.5 text-center text-sm outline-none focus:border-brand"
+            />
+            <button
+              type="button"
+              onClick={loadCaptcha}
+              title="New question"
+              className="rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-500 hover:border-brand hover:text-brand"
+            >
+              ↻
+            </button>
           </div>
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !captcha}
             className="w-full rounded-lg bg-brand py-2.5 text-sm font-semibold text-white hover:bg-brand/90 disabled:opacity-60"
           >
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
-
-          <p className="mt-4 text-center text-xs text-slate-400">
-            🔒 Accounts are created by the Super Admin only.
-          </p>
         </form>
       </div>
     </div>

@@ -1,42 +1,27 @@
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
-import { env } from '../../config/env.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { badRequest, unauthorized } from '../../utils/AppError.js';
 import {
   signAccessToken,
   signRefreshToken,
   verifyRefreshToken,
+  hashSsoToken,
 } from '../../utils/tokens.js';
+import { createCaptcha, verifyCaptchaAnswer } from './captcha.service.js';
 
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
-  captchaToken: z.string().min(1, 'Please complete the reCAPTCHA'),
+  captchaId: z.string().min(1),
+  captchaAnswer: z.union([z.string().min(1), z.number()]),
 });
 
-// Verify a reCAPTCHA v2 token against Google's siteverify endpoint.
-async function verifyCaptcha(token, remoteIp) {
-  const body = new URLSearchParams({
-    secret: env.recaptcha.secretKey,
-    response: token,
-  });
-  if (remoteIp) body.append('remoteip', remoteIp);
-
-  let data;
-  try {
-    const res = await fetch('https://www.google.com/recaptcha/api/siteverify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body,
-    });
-    data = await res.json();
-  } catch {
-    throw badRequest('Could not verify reCAPTCHA. Please try again.');
-  }
-  if (!data.success) throw badRequest('reCAPTCHA verification failed. Please try again.');
-}
+// GET /api/auth/captcha — a fresh math challenge for the login form.
+export const getCaptcha = asyncHandler(async (req, res) => {
+  res.json(createCaptcha());
+});
 
 const publicUser = (u) => ({
   id: u.id,
@@ -57,8 +42,10 @@ const cookieOpts = {
 
 // POST /api/auth/login  — sign-in only, no public registration
 export const login = asyncHandler(async (req, res) => {
-  const { email, password, captchaToken } = req.body;
-  await verifyCaptcha(captchaToken, req.ip);
+  const { email, password, captchaId, captchaAnswer } = req.body;
+  if (!verifyCaptchaAnswer(captchaId, captchaAnswer)) {
+    throw badRequest('Security check failed — please answer the new question.');
+  }
 
   const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
   if (!user || !user.isActive) throw unauthorized('Invalid credentials');
@@ -68,6 +55,34 @@ export const login = asyncHandler(async (req, res) => {
 
   res.cookie(REFRESH_COOKIE, signRefreshToken(user), cookieOpts);
   res.json({ accessToken: signAccessToken(user), user: publicUser(user) });
+});
+
+export const ssoLoginSchema = z.object({
+  token: z.string().min(1),
+});
+
+// POST /api/auth/sso — exchange a one-time SSO token (issued via the
+// integration API) for a normal session. The token row is deleted on use,
+// so it can never be replayed.
+export const ssoLogin = asyncHandler(async (req, res) => {
+  const tokenHash = hashSsoToken(req.body.token);
+
+  let row;
+  try {
+    // delete() doubles as the single-use guard: a second attempt finds nothing.
+    row = await prisma.ssoToken.delete({
+      where: { tokenHash },
+      include: { user: true },
+    });
+  } catch {
+    throw unauthorized('Sign-in link is invalid or already used');
+  }
+
+  if (row.expiresAt < new Date()) throw unauthorized('Sign-in link has expired');
+  if (!row.user.isActive) throw unauthorized('Account inactive');
+
+  res.cookie(REFRESH_COOKIE, signRefreshToken(row.user), cookieOpts);
+  res.json({ accessToken: signAccessToken(row.user), user: publicUser(row.user) });
 });
 
 // POST /api/auth/refresh — issue a fresh access token from the refresh cookie

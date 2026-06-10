@@ -4,8 +4,8 @@ import { useAuthStore } from '../../store/auth.js';
 export function useAuth() {
   const { user, accessToken, setAuth, clear } = useAuthStore();
 
-  const login = async (email, password, captchaToken) => {
-    const { data } = await api.post('/auth/login', { email, password, captchaToken });
+  const login = async (email, password, captcha) => {
+    const { data } = await api.post('/auth/login', { email, password, ...captcha });
     setAuth(data.accessToken, data.user);
     return data.user;
   };

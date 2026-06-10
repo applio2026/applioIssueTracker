@@ -20,10 +20,9 @@ export const env = {
     accessTtl: process.env.ACCESS_TOKEN_TTL || '15m',
     refreshTtl: process.env.REFRESH_TOKEN_TTL || '7d',
   },
-  recaptcha: {
-    // Google reCAPTCHA v2 ("I'm not a robot"). Defaults to Google's public
-    // test secret, which accepts any token — replace in production.
-    secretKey: process.env.RECAPTCHA_SECRET_KEY || '6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe',
+  // Shared secret a partner application sends (x-api-key) to provision logins.
+  integration: {
+    apiKey: process.env.INTEGRATION_API_KEY || '',
   },
   smtp: {
     host: process.env.SMTP_HOST || '',

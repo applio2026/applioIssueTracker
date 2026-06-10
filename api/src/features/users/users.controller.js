@@ -6,18 +6,26 @@ import { notFound, conflict } from '../../utils/AppError.js';
 
 const ROLES = ['CUSTOMER', 'DEVELOPER', 'ADMIN', 'SUPER_ADMIN'];
 
-export const createUserSchema = z.object({
-  name: z.string().min(2),
-  email: z.string().email(),
-  role: z.enum(ROLES),
-  department: z.string().optional(),
-  password: z.string().min(6),
-});
+export const createUserSchema = z
+  .object({
+    name: z.string().min(2),
+    email: z.string().email(),
+    role: z.enum(ROLES),
+    department: z.string().optional(),
+    company: z.string().trim().min(1).optional(),
+    password: z.string().min(6),
+  })
+  // Company is mandatory for customers — it becomes the label on their tickets.
+  .refine((d) => d.role !== 'CUSTOMER' || !!d.company, {
+    message: 'Company name is required for customers',
+    path: ['company'],
+  });
 
 export const updateUserSchema = z.object({
   name: z.string().min(2).optional(),
   role: z.enum(ROLES).optional(),
   department: z.string().nullable().optional(),
+  company: z.string().trim().min(1).nullable().optional(),
   isActive: z.boolean().optional(),
   password: z.string().min(6).optional(),
 });
@@ -28,6 +36,7 @@ const publicUser = (u) => ({
   email: u.email,
   role: u.role,
   department: u.department,
+  company: u.company,
   isActive: u.isActive,
   createdAt: u.createdAt,
 });
@@ -40,7 +49,7 @@ export const listUsers = asyncHandler(async (req, res) => {
 
 // POST /api/users — create an account and assign a role (Super Admin only)
 export const createUser = asyncHandler(async (req, res) => {
-  const { name, email, role, department, password } = req.body;
+  const { name, email, role, department, company, password } = req.body;
   const lowerEmail = email.toLowerCase();
 
   const existing = await prisma.user.findUnique({ where: { email: lowerEmail } });
@@ -48,7 +57,8 @@ export const createUser = asyncHandler(async (req, res) => {
 
   const passwordHash = await bcrypt.hash(password, 10);
   const user = await prisma.user.create({
-    data: { name, email: lowerEmail, role, department, passwordHash },
+    // Only customers carry a company; ignore it for staff roles.
+    data: { name, email: lowerEmail, role, department, company: role === 'CUSTOMER' ? company : null, passwordHash },
   });
 
   res.status(201).json({ user: publicUser(user) });

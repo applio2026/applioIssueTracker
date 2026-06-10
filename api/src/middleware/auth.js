@@ -13,7 +13,7 @@ export async function requireAuth(req, res, next) {
     const user = await prisma.user.findUnique({ where: { id: payload.sub } });
     if (!user || !user.isActive) throw unauthorized('Account inactive or not found');
 
-    req.user = { id: user.id, role: user.role, name: user.name, email: user.email };
+    req.user = { id: user.id, role: user.role, name: user.name, email: user.email, company: user.company };
     next();
   } catch (err) {
     if (err.name === 'TokenExpiredError') return next(unauthorized('Token expired'));
