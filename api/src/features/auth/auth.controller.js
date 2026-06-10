@@ -1,8 +1,9 @@
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
+import { env } from '../../config/env.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
-import { unauthorized } from '../../utils/AppError.js';
+import { badRequest, unauthorized } from '../../utils/AppError.js';
 import {
   signAccessToken,
   signRefreshToken,
@@ -12,7 +13,30 @@ import {
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
+  captchaToken: z.string().min(1, 'Please complete the reCAPTCHA'),
 });
+
+// Verify a reCAPTCHA v2 token against Google's siteverify endpoint.
+async function verifyCaptcha(token, remoteIp) {
+  const body = new URLSearchParams({
+    secret: env.recaptcha.secretKey,
+    response: token,
+  });
+  if (remoteIp) body.append('remoteip', remoteIp);
+
+  let data;
+  try {
+    const res = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    });
+    data = await res.json();
+  } catch {
+    throw badRequest('Could not verify reCAPTCHA. Please try again.');
+  }
+  if (!data.success) throw badRequest('reCAPTCHA verification failed. Please try again.');
+}
 
 const publicUser = (u) => ({
   id: u.id,
@@ -33,7 +57,9 @@ const cookieOpts = {
 
 // POST /api/auth/login  — sign-in only, no public registration
 export const login = asyncHandler(async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, captchaToken } = req.body;
+  await verifyCaptcha(captchaToken, req.ip);
+
   const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
   if (!user || !user.isActive) throw unauthorized('Invalid credentials');
 

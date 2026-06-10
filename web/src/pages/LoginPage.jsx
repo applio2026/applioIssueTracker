@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../features/auth/useAuth.js';
+import Recaptcha from '../components/Recaptcha.jsx';
 
 export default function LoginPage() {
   const { login, isAuthenticated } = useAuth();
@@ -8,8 +9,10 @@ export default function LoginPage() {
   const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [captchaToken, setCaptchaToken] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const recaptchaRef = useRef(null);
 
   if (isAuthenticated) return <Navigate to="/" replace />;
 
@@ -18,12 +21,17 @@ export default function LoginPage() {
   const onSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    if (!captchaToken) {
+      setError('Please confirm you are not a robot.');
+      return;
+    }
     setLoading(true);
     try {
-      await login(email, password);
+      await login(email, password, captchaToken);
       navigate(from, { replace: true });
     } catch (err) {
       setError(err.response?.data?.error || 'Unable to sign in. Please try again.');
+      recaptchaRef.current?.reset();
     } finally {
       setLoading(false);
     }
@@ -69,6 +77,10 @@ export default function LoginPage() {
             placeholder="••••••••"
             className="mb-5 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-brand"
           />
+
+          <div className="mb-5">
+            <Recaptcha ref={recaptchaRef} onChange={setCaptchaToken} />
+          </div>
 
           <button
             type="submit"
