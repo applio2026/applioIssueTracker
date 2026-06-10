@@ -1,6 +1,6 @@
-# Full stack: db + api + web.
-#   docker compose up --build
-# Then open http://localhost:8080  (Super Admin: superadmin@university.edu / Admin@123)
+# Full stack: db + api + web
+# Production URL: http://103.189.89.128:8092
+
 services:
   db:
     image: postgres:17
@@ -11,7 +11,7 @@ services:
       POSTGRES_PASSWORD: tracking
       POSTGRES_DB: tracking
     ports:
-      - "5432:5432"
+      - "5436:5432"
     volumes:
       - tracking_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -32,20 +32,29 @@ services:
       DATABASE_URL: "postgresql://tracking:tracking@db:5432/tracking?schema=public"
       PORT: "4100"
       NODE_ENV: "production"
-      CLIENT_URL: "http://localhost:8080"
+
+      # Frontend URL
+      CLIENT_URL: "http://103.189.89.128:8092"
+
       JWT_ACCESS_SECRET: "change-me-access"
       JWT_REFRESH_SECRET: "change-me-refresh"
+
       ACCESS_TOKEN_TTL: "15m"
       REFRESH_TOKEN_TTL: "7d"
-      # Optional SMTP — leave SMTP_HOST empty to log emails instead of sending.
+
+      # SMTP Configuration
       SMTP_HOST: ""
       SMTP_PORT: "587"
       SMTP_USER: ""
       SMTP_PASS: ""
+
       MAIL_FROM: "Tracking System <no-reply@university.edu>"
+
+      # Initial Super Admin
       SEED_SUPERADMIN_EMAIL: "superadmin@university.edu"
       SEED_SUPERADMIN_PASSWORD: "Admin@123"
       SEED_SUPERADMIN_NAME: "Super Admin"
+
     volumes:
       - tracking_uploads:/app/uploads
 
@@ -57,7 +66,7 @@ services:
     depends_on:
       - api
     ports:
-      - "8080:80"
+      - "8092:80"
 
 volumes:
   tracking_pgdata:
