@@ -29,6 +29,13 @@ import {
   deleteSubTask,
 } from './subtasks.controller.js';
 import { addTimeLog, deleteTimeLog, timeLogSchema } from './timelogs.controller.js';
+import {
+  watchTicket,
+  unwatchTicket,
+  createLink,
+  createLinkSchema,
+  deleteLink,
+} from './collab.controller.js';
 
 const router = Router();
 
@@ -50,6 +57,14 @@ router.delete('/:id/subtasks/:subId', deleteSubTask);
 // Time logs
 router.post('/:id/time', validate(timeLogSchema), addTimeLog);
 router.delete('/:id/time/:logId', deleteTimeLog);
+
+// Watching
+router.post('/:id/watch', watchTicket);
+router.delete('/:id/watch', unwatchTicket);
+
+// Issue links ("relates to")
+router.post('/:id/links', validate(createLinkSchema), createLink);
+router.delete('/:id/links/:linkId', deleteLink);
 
 // Attachments
 router.post('/:id/attachments', upload.single('file'), uploadAttachment);

@@ -8,6 +8,7 @@ import {
   canTransition,
   scopeWhereForUser,
   canAccessTicket,
+  watcherIds,
   ticketInclude,
 } from './ticket.service.js';
 import { notify } from '../notifications/notification.service.js';
@@ -93,6 +94,13 @@ export const getTicket = asyncHandler(async (req, res) => {
       timeLogs: {
         orderBy: { createdAt: 'desc' },
         include: { user: { select: { id: true, name: true, role: true } } },
+      },
+      watchers: { select: { userId: true, user: { select: { id: true, name: true } } } },
+      linksFrom: {
+        include: { to: { select: { id: true, key: true, title: true, status: true } } },
+      },
+      linksTo: {
+        include: { from: { select: { id: true, key: true, title: true, status: true } } },
       },
     },
   });
@@ -192,7 +200,7 @@ export const changeStatus = asyncHandler(async (req, res) => {
 
   const full = await prisma.ticket.findUnique({ where: { id: ticket.id }, include: ticketInclude });
 
-  await notify([ticket.requesterId, ticket.assigneeId], {
+  await notify([ticket.requesterId, ticket.assigneeId, ...(await watcherIds(ticket.id))], {
     type: 'STATUS_CHANGED',
     ticketId: ticket.id,
     message: `${full.key} moved to ${status} by ${req.user.name}`,
@@ -275,10 +283,11 @@ export const addComment = asyncHandler(async (req, res) => {
     return c;
   });
 
-  // Internal comments only notify staff (the assignee), not the requester.
+  // Internal comments only notify staff (the assignee), not the requester
+  // or watchers (who may be customers).
   const recipients = isInternal
     ? [ticket.assigneeId]
-    : [ticket.requesterId, ticket.assigneeId];
+    : [ticket.requesterId, ticket.assigneeId, ...(await watcherIds(ticket.id))];
   await notify(recipients, {
     type: 'TICKET_COMMENT',
     ticketId: ticket.id,

@@ -1,18 +1,27 @@
 import { useState } from 'react';
 import AppLayout from '../components/AppLayout.jsx';
 import { useDashboardStats, downloadTicketsCsv } from '../features/dashboard/api.js';
-import { STATUS_META } from '../features/tickets/constants.js';
+import { STATUS_META, PRIORITIES } from '../features/tickets/constants.js';
 
 const ROLE_LABEL = { DEVELOPER: 'Developer', ADMIN: 'Admin', SUPER_ADMIN: 'Super Admin' };
 
+const EMPTY_FILTERS = { label: '', priority: '', from: '', to: '', openOnly: '' };
+
+const selectCls =
+  'rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand';
+
 export default function DashboardPage() {
-  const { data, isLoading } = useDashboardStats();
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const { data, isLoading } = useDashboardStats(filters);
   const [downloading, setDownloading] = useState(false);
+
+  const set = (k) => (e) => setFilters((f) => ({ ...f, [k]: e.target.value }));
+  const hasFilters = Object.values(filters).some(Boolean);
 
   const exportCsv = async () => {
     setDownloading(true);
     try {
-      await downloadTicketsCsv();
+      await downloadTicketsCsv(filters);
     } finally {
       setDownloading(false);
     }
@@ -21,7 +30,7 @@ export default function DashboardPage() {
   if (isLoading) return <AppLayout><div className="text-slate-400">Loading…</div></AppLayout>;
   if (!data) return <AppLayout><div className="text-slate-400">No data.</div></AppLayout>;
 
-  const { kpis, trend, byStatus, workload } = data;
+  const { kpis, trend, byStatus, workload, labels } = data;
   const maxTrend = Math.max(1, ...trend.map((d) => d.count));
   const totalTickets = byStatus.reduce((s, x) => s + x.count, 0);
 
@@ -32,6 +41,40 @@ export default function DashboardPage() {
         <button onClick={exportCsv} disabled={downloading} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-60">
           {downloading ? 'Exporting…' : '⬇ Export CSV'}
         </button>
+      </div>
+
+      {/* Filters */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <select value={filters.label} onChange={set('label')} className={selectCls}>
+          <option value="">All labels</option>
+          {labels?.map((l) => <option key={l} value={l}>{l}</option>)}
+        </select>
+        <select value={filters.priority} onChange={set('priority')} className={selectCls}>
+          <option value="">All severities</option>
+          {PRIORITIES.map((p) => <option key={p} value={p}>{p[0] + p.slice(1).toLowerCase()}</option>)}
+        </select>
+        <label className="flex items-center gap-1.5 text-sm text-slate-500">
+          From
+          <input type="date" value={filters.from} onChange={set('from')} className={selectCls} />
+        </label>
+        <label className="flex items-center gap-1.5 text-sm text-slate-500">
+          To
+          <input type="date" value={filters.to} onChange={set('to')} className={selectCls} />
+        </label>
+        <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            checked={filters.openOnly === '1'}
+            onChange={(e) => setFilters((f) => ({ ...f, openOnly: e.target.checked ? '1' : '' }))}
+            className="accent-brand"
+          />
+          Open issues only
+        </label>
+        {hasFilters && (
+          <button onClick={() => setFilters(EMPTY_FILTERS)} className="text-sm font-medium text-brand hover:underline">
+            Clear filters
+          </button>
+        )}
       </div>
 
       {/* KPIs */}

@@ -15,6 +15,9 @@ import {
   useDeleteSubTask,
   useLogTime,
   useDeleteTimeLog,
+  useWatchTicket,
+  useAddLink,
+  useDeleteLink,
   useUploadAttachment,
   useDeleteAttachment,
   downloadAttachment,
@@ -41,13 +44,54 @@ const SUBTASK_STATUSES = [
   { value: 'DONE', label: 'Done' },
 ];
 
+const inputCls =
+  'rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand';
+
+// Jira-style collapsible section with a chevron header.
+function Section({ title, extra, children, defaultOpen = true }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="mb-5">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="mb-2 flex w-full items-center gap-2 text-left"
+      >
+        <span className={`text-[9px] text-slate-400 transition-transform ${open ? 'rotate-90' : ''}`}>▶</span>
+        <h3 className="text-sm font-bold text-slate-700">{title}</h3>
+        {extra != null && <span className="ml-auto text-xs text-slate-400">{extra}</span>}
+      </button>
+      {open && children}
+    </div>
+  );
+}
+
+// Key/value row in the Details grid.
+function Field({ name, children }) {
+  return (
+    <div className="flex items-start gap-3 py-0.5">
+      <span className="w-28 shrink-0 text-xs font-medium text-slate-400">{name}</span>
+      <span className="min-w-0 text-sm text-slate-700">{children}</span>
+    </div>
+  );
+}
+
+// Sidebar key/value row.
+function Meta({ label: l, value }) {
+  return (
+    <>
+      <dt className="mt-3 text-[11px] uppercase tracking-wide text-slate-400">{l}</dt>
+      <dd className="mt-0.5 text-sm text-slate-700">{value}</dd>
+    </>
+  );
+}
+
 export default function TicketDetailPage() {
   const { id } = useParams();
   const { user } = useAuth();
   const { data: ticket, isLoading } = useTicket(id);
 
   const isManager = ['ADMIN', 'SUPER_ADMIN'].includes(user.role);
-  // All participants need the staff list for sub-task assignment.
   const { data: assignees } = useAssignees();
 
   const changeStatus = useChangeStatus();
@@ -59,12 +103,17 @@ export default function TicketDetailPage() {
   const deleteSubTask = useDeleteSubTask();
   const logTime = useLogTime();
   const deleteTimeLog = useDeleteTimeLog();
+  const watchTicket = useWatchTicket();
+  const addLink = useAddLink();
+  const deleteLink = useDeleteLink();
   const uploadAttachment = useUploadAttachment();
   const deleteAttachment = useDeleteAttachment();
 
   const [comment, setComment] = useState('');
   const [subTask, setSubTask] = useState({ title: '', assigneeId: '' });
   const [time, setTime] = useState({ hours: '', minutes: '', note: '' });
+  const [linkKey, setLinkKey] = useState('');
+  const [statusMenu, setStatusMenu] = useState(false);
   const [err, setErr] = useState('');
 
   if (isLoading) return <AppLayout><div className="text-slate-400">Loading…</div></AppLayout>;
@@ -72,6 +121,29 @@ export default function TicketDetailPage() {
 
   const canMoveStatus = isManager || ticket.assignee?.id === user.id;
   const nextStatuses = STATUS_TRANSITIONS[ticket.status] || [];
+  const isDone = ['RESOLVED', 'CLOSED'].includes(ticket.status);
+
+  const amWatching = ticket.watchers?.some((w) => w.userId === user.id);
+  const links = [
+    ...(ticket.linksFrom || []).map((l) => ({ id: l.id, other: l.to })),
+    ...(ticket.linksTo || []).map((l) => ({ id: l.id, other: l.from })),
+  ];
+
+  const subTaskAssignees = [
+    { id: user.id, name: `${user.name} (me)` },
+    ...(assignees || []).filter((a) => a.id !== user.id),
+  ];
+  const doneCount = ticket.subTasks?.filter((s) => s.status === 'DONE').length || 0;
+  const subTotal = ticket.subTasks?.length || 0;
+
+  const totalMinutes = ticket.timeLogs?.reduce((sum, l) => sum + l.minutes, 0) || 0;
+  const timeByUser = Object.entries(
+    (ticket.timeLogs || []).reduce((acc, l) => {
+      const name = l.user?.name || 'Unknown';
+      acc[name] = (acc[name] || 0) + l.minutes;
+      return acc;
+    }, {}),
+  );
 
   const run = (mutation, vars) => {
     setErr('');
@@ -83,13 +155,6 @@ export default function TicketDetailPage() {
     if (!comment.trim()) return;
     run(addComment, { id, body: comment });
     setComment('');
-  };
-
-  const onUpload = (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = ''; // allow re-selecting the same file
-    if (!file) return;
-    run(uploadAttachment, { id, file });
   };
 
   const submitSubTask = (e) => {
@@ -110,51 +175,115 @@ export default function TicketDetailPage() {
     setTime({ hours: '', minutes: '', note: '' });
   };
 
-  // Options for the sub-task assignee dropdowns: me first, then other staff.
-  const subTaskAssignees = [
-    { id: user.id, name: `${user.name} (me)` },
-    ...(assignees || []).filter((a) => a.id !== user.id),
-  ];
+  const submitLink = (e) => {
+    e.preventDefault();
+    if (!linkKey.trim()) return;
+    run(addLink, { id, key: linkKey.trim() });
+    setLinkKey('');
+  };
 
-  const totalMinutes = ticket?.timeLogs?.reduce((sum, l) => sum + l.minutes, 0) || 0;
-  const timeByUser = Object.entries(
-    (ticket?.timeLogs || []).reduce((acc, l) => {
-      const name = l.user?.name || 'Unknown';
-      acc[name] = (acc[name] || 0) + l.minutes;
-      return acc;
-    }, {}),
-  );
+  const onUpload = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    run(uploadAttachment, { id, file });
+  };
 
   return (
     <AppLayout>
-      <Link to="/tickets" className="text-sm text-brand hover:underline">← Back to tickets</Link>
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-1.5 text-xs text-slate-400">
+        <Link to="/tickets" className="hover:text-brand hover:underline">Tickets</Link>
+        <span>/</span>
+        <span className="font-mono font-semibold text-slate-500">{ticket.key}</span>
+      </div>
+      <h2 className="mb-3 mt-1 text-2xl font-bold text-slate-800">{ticket.title}</h2>
 
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <span className="font-mono text-sm font-semibold text-slate-500">{ticket.key}</span>
+      {/* Action bar */}
+      <div className="mb-5 flex flex-wrap items-center gap-2">
+        {canMoveStatus && nextStatuses.length > 0 && (
+          <div className="relative">
+            <button
+              onClick={() => setStatusMenu((o) => !o)}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:border-brand"
+            >
+              {STATUS_META[ticket.status]?.label} <span className="text-[9px]">▾</span>
+            </button>
+            {statusMenu && (
+              <div className="absolute left-0 top-full z-10 mt-1 w-44 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                {nextStatuses.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => { setStatusMenu(false); run(changeStatus, { id, status: s }); }}
+                    className="block w-full px-3 py-1.5 text-left text-sm text-slate-600 hover:bg-slate-50"
+                  >
+                    {STATUS_META[s].label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <button
+          onClick={() => run(watchTicket, { id, watching: amWatching })}
+          className={`rounded-lg border px-3 py-1.5 text-sm font-medium ${
+            amWatching
+              ? 'border-brand bg-brand/5 text-brand'
+              : 'border-slate-200 bg-white text-slate-600 hover:border-brand hover:text-brand'
+          }`}
+        >
+          👁 {amWatching ? 'Watching' : 'Watch'}
+        </button>
+
         <StatusBadge status={ticket.status} />
         <PriorityBadge priority={ticket.priority} />
-        <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{ticket.label}</span>
       </div>
-      <h2 className="mb-4 mt-1 text-xl font-bold text-slate-800">{ticket.title}</h2>
 
       {err && <div className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{err}</div>}
 
       <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
         {/* Main column */}
         <div>
-          <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
-            <p className="whitespace-pre-wrap text-sm text-slate-700">{ticket.description}</p>
-          </div>
-
-          {/* Sub-tasks */}
-          <div className="mb-5">
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-700">Sub-tasks</h3>
-              <span className="text-xs text-slate-400">
-                {ticket.subTasks?.filter((s) => s.status === 'DONE').length}/{ticket.subTasks?.length} done
-              </span>
+          {/* Details */}
+          <Section title="Details">
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="grid gap-x-10 sm:grid-cols-2">
+                <div>
+                  <Field name="Type">Service Request</Field>
+                  <Field name="Category">{ticket.category?.name || 'None'}</Field>
+                  <Field name="Label">
+                    <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{ticket.label}</span>
+                  </Field>
+                  <Field name="Priority"><PriorityBadge priority={ticket.priority} /></Field>
+                </div>
+                <div>
+                  <Field name="Status"><StatusBadge status={ticket.status} /></Field>
+                  <Field name="Resolution">{isDone ? 'Done' : 'Unresolved'}</Field>
+                  <Field name="SLA Due">{ticket.slaDueAt ? fmt(ticket.slaDueAt) : '—'}</Field>
+                </div>
+              </div>
             </div>
-            {ticket.subTasks?.length === 0 && <p className="text-sm text-slate-400">No sub-tasks yet.</p>}
+          </Section>
+
+          {/* Description */}
+          <Section title="Description">
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <p className="whitespace-pre-wrap text-sm text-slate-700">{ticket.description}</p>
+            </div>
+          </Section>
+
+          {/* Sub-tasks (checklist) */}
+          <Section title="Sub-tasks" extra={`${doneCount}/${subTotal}`}>
+            {subTotal > 0 && (
+              <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-full rounded-full bg-emerald-500 transition-all"
+                  style={{ width: `${subTotal ? (doneCount / subTotal) * 100 : 0}%` }}
+                />
+              </div>
+            )}
+            {subTotal === 0 && <p className="text-sm text-slate-400">No sub-tasks yet.</p>}
             <div className="space-y-1.5">
               {ticket.subTasks?.map((s) => {
                 const canEdit = isManager || s.createdBy?.id === user.id || s.assignee?.id === user.id;
@@ -192,7 +321,7 @@ export default function TicketDetailPage() {
                 value={subTask.title}
                 onChange={(e) => setSubTask((f) => ({ ...f, title: e.target.value }))}
                 placeholder="Add a sub-task…"
-                className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand"
+                className={`${inputCls} min-w-0 flex-1`}
               />
               <select
                 value={subTask.assigneeId}
@@ -206,17 +335,47 @@ export default function TicketDetailPage() {
                 Add
               </button>
             </form>
-          </div>
+          </Section>
+
+          {/* Issue links */}
+          <Section title="Issue Links" extra={links.length || null}>
+            {links.length === 0 && <p className="text-sm text-slate-400">No linked tickets.</p>}
+            <div className="space-y-1.5">
+              {links.map((l) => (
+                <div key={l.id} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                  <span className="shrink-0 text-xs text-slate-400">relates to</span>
+                  <Link to={`/tickets/${l.other.id}`} className="shrink-0 font-mono text-xs font-semibold text-brand hover:underline">
+                    {l.other.key}
+                  </Link>
+                  <span className="min-w-0 flex-1 truncate text-sm text-slate-700">{l.other.title}</span>
+                  <StatusBadge status={l.other.status} />
+                  <button onClick={() => run(deleteLink, { id, linkId: l.id })} className="text-xs text-slate-400 hover:text-red-500">✕</button>
+                </div>
+              ))}
+            </div>
+            <form onSubmit={submitLink} className="mt-2 flex gap-2">
+              <input
+                value={linkKey}
+                onChange={(e) => setLinkKey(e.target.value)}
+                placeholder="Link a ticket by key, e.g. UNIV-104"
+                className={`${inputCls} min-w-0 flex-1`}
+              />
+              <button type="submit" disabled={addLink.isPending} className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand/90 disabled:opacity-60">
+                Link
+              </button>
+            </form>
+          </Section>
 
           {/* Attachments */}
-          <div className="mb-5">
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-700">Attachments</h3>
-              <label className="cursor-pointer rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100">
+          <Section
+            title="Attachments"
+            extra={
+              <label className="cursor-pointer rounded-lg border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100">
                 {uploadAttachment.isPending ? 'Uploading…' : '📎 Add file'}
                 <input type="file" className="hidden" onChange={onUpload} disabled={uploadAttachment.isPending} />
               </label>
-            </div>
+            }
+          >
             {ticket.attachments?.length === 0 && <p className="text-sm text-slate-400">No attachments.</p>}
             <div className="space-y-1.5">
               {ticket.attachments?.map((a) => (
@@ -233,14 +392,10 @@ export default function TicketDetailPage() {
                 </div>
               ))}
             </div>
-          </div>
+          </Section>
 
           {/* Time tracking */}
-          <div className="mb-5">
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-700">Time Tracking</h3>
-              <span className="text-xs font-semibold text-slate-500">Total: {fmtMin(totalMinutes)}</span>
-            </div>
+          <Section title="Time Tracking" extra={`Total: ${fmtMin(totalMinutes)}`}>
             {timeByUser.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-1.5">
                 {timeByUser.map(([name, mins]) => (
@@ -251,24 +406,16 @@ export default function TicketDetailPage() {
               </div>
             )}
             <form onSubmit={submitTime} className="flex flex-wrap gap-2">
-              <input
-                type="number" min="0" max="99" placeholder="h"
-                value={time.hours}
+              <input type="number" min="0" max="99" placeholder="h" value={time.hours}
                 onChange={(e) => setTime((f) => ({ ...f, hours: e.target.value }))}
-                className="w-16 rounded-lg border border-slate-200 px-2 py-2 text-sm outline-none focus:border-brand"
-              />
-              <input
-                type="number" min="0" max="59" placeholder="m"
-                value={time.minutes}
+                className="w-16 rounded-lg border border-slate-200 px-2 py-2 text-sm outline-none focus:border-brand" />
+              <input type="number" min="0" max="59" placeholder="m" value={time.minutes}
                 onChange={(e) => setTime((f) => ({ ...f, minutes: e.target.value }))}
-                className="w-16 rounded-lg border border-slate-200 px-2 py-2 text-sm outline-none focus:border-brand"
-              />
-              <input
-                value={time.note}
+                className="w-16 rounded-lg border border-slate-200 px-2 py-2 text-sm outline-none focus:border-brand" />
+              <input value={time.note}
                 onChange={(e) => setTime((f) => ({ ...f, note: e.target.value }))}
                 placeholder="What did you work on? (optional)"
-                className="min-w-[160px] flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand"
-              />
+                className={`${inputCls} min-w-[160px] flex-1`} />
               <button type="submit" disabled={logTime.isPending} className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand/90 disabled:opacity-60">
                 Log time
               </button>
@@ -290,124 +437,126 @@ export default function TicketDetailPage() {
                 </div>
               ))}
             </div>
-          </div>
+          </Section>
 
           {/* Activity */}
-          <h3 className="mb-3 text-sm font-bold text-slate-700">Activity</h3>
-          <div className="ml-2 border-l-2 border-slate-200 pl-5">
-            {ticket.activities?.map((a) => (
-              <div key={a.id} className="relative mb-4 text-sm">
-                <span className="absolute -left-[27px] top-1 h-3 w-3 rounded-full border-2 border-white bg-brand" />
-                <span className="font-semibold text-slate-700">{a.actor?.name}</span>{' '}
-                <span className="text-slate-600">{ACTIVITY_TEXT[a.type]?.(a) || a.type}</span>
-                <div className="text-[11px] text-slate-400">{fmt(a.createdAt)}</div>
-              </div>
-            ))}
-          </div>
+          <Section title="Activity" defaultOpen={false}>
+            <div className="ml-2 border-l-2 border-slate-200 pl-5">
+              {ticket.activities?.map((a) => (
+                <div key={a.id} className="relative mb-4 text-sm">
+                  <span className="absolute -left-[27px] top-1 h-3 w-3 rounded-full border-2 border-white bg-brand" />
+                  <span className="font-semibold text-slate-700">{a.actor?.name}</span>{' '}
+                  <span className="text-slate-600">{ACTIVITY_TEXT[a.type]?.(a) || a.type}</span>
+                  <div className="text-[11px] text-slate-400">{fmt(a.createdAt)}</div>
+                </div>
+              ))}
+            </div>
+          </Section>
 
           {/* Comments */}
-          <h3 className="mb-3 mt-5 text-sm font-bold text-slate-700">Comments</h3>
-          {ticket.comments?.length === 0 && <p className="text-sm text-slate-400">No comments yet.</p>}
-          <div className="space-y-3">
-            {ticket.comments?.map((c) => (
-              <div key={c.id} className="flex gap-2">
-                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gradient-to-br from-brand-light to-accent text-[10px] font-semibold text-white">
-                  {c.author?.name?.split(' ').map((p) => p[0]).slice(0, 2).join('')}
-                </div>
-                <div className="flex-1 rounded-lg bg-slate-100 px-3 py-2">
-                  <div className="text-sm">
-                    <span className="font-semibold text-slate-700">{c.author?.name}</span>
-                    {c.isInternal && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">INTERNAL</span>}
-                    <span className="ml-2 text-[11px] text-slate-400">{fmt(c.createdAt)}</span>
+          <Section title="Comments" extra={ticket.comments?.length || null}>
+            {ticket.comments?.length === 0 && <p className="text-sm text-slate-400">No comments yet.</p>}
+            <div className="space-y-3">
+              {ticket.comments?.map((c) => (
+                <div key={c.id} className="flex gap-2">
+                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gradient-to-br from-brand-light to-accent text-[10px] font-semibold text-white">
+                    {c.author?.name?.split(' ').map((p) => p[0]).slice(0, 2).join('')}
                   </div>
-                  <p className="whitespace-pre-wrap text-sm text-slate-700">{c.body}</p>
+                  <div className="flex-1 rounded-lg bg-slate-100 px-3 py-2">
+                    <div className="text-sm">
+                      <span className="font-semibold text-slate-700">{c.author?.name}</span>
+                      {c.isInternal && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">INTERNAL</span>}
+                      <span className="ml-2 text-[11px] text-slate-400">{fmt(c.createdAt)}</span>
+                    </div>
+                    <p className="whitespace-pre-wrap text-sm text-slate-700">{c.body}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-
-          <form onSubmit={submitComment} className="mt-4">
-            <textarea
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              rows={2}
-              placeholder="Add a comment…"
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand"
-            />
-            <div className="mt-2 flex justify-end">
-              <button type="submit" disabled={addComment.isPending} className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand/90 disabled:opacity-60">
-                {addComment.isPending ? 'Posting…' : 'Comment'}
-              </button>
+              ))}
             </div>
-          </form>
+            <form onSubmit={submitComment} className="mt-4">
+              <textarea
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                rows={2}
+                placeholder="Add a comment…"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand"
+              />
+              <div className="mt-2 flex justify-end">
+                <button type="submit" disabled={addComment.isPending} className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand/90 disabled:opacity-60">
+                  {addComment.isPending ? 'Posting…' : 'Comment'}
+                </button>
+              </div>
+            </form>
+          </Section>
         </div>
 
         {/* Sidebar */}
         <aside className="h-fit rounded-xl border border-slate-200 bg-white p-4">
-          {/* Status control */}
-          {canMoveStatus && nextStatuses.length > 0 && (
-            <div className="mb-4">
-              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Move status to</div>
-              <div className="flex flex-wrap gap-1.5">
-                {nextStatuses.map((s) => (
-                  <button key={s} onClick={() => run(changeStatus, { id, status: s })}
-                    className="rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 hover:border-brand hover:text-brand">
-                    {STATUS_META[s].label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Assignment (managers) */}
-          {isManager && (
-            <div className="mb-4">
-              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Assignee</div>
-              <select
-                value={ticket.assignee?.id || ''}
-                onChange={(e) => run(assignTicket, { id, assigneeId: e.target.value || null })}
-                className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm outline-none focus:border-brand"
-              >
-                <option value="">Unassigned</option>
-                {assignees?.map((a) => <option key={a.id} value={a.id}>{a.name} ({a.role.toLowerCase()})</option>)}
-              </select>
-            </div>
-          )}
-
-          {/* Priority (managers) */}
-          {isManager && (
-            <div className="mb-4">
-              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Priority</div>
-              <select
-                value={ticket.priority}
-                onChange={(e) => run(changePriority, { id, priority: e.target.value })}
-                className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm outline-none focus:border-brand"
-              >
-                {PRIORITIES.map((p) => <option key={p} value={p}>{p[0] + p.slice(1).toLowerCase()}</option>)}
-              </select>
-            </div>
-          )}
-
+          <h4 className="text-xs font-bold uppercase tracking-wide text-slate-400">People</h4>
           <dl className="text-sm">
-            <Meta label="Assignee" value={ticket.assignee?.name || 'Unassigned'} />
-            <Meta label="Requester" value={ticket.requester?.name} />
-            <Meta label="Label" value={ticket.label} />
-            <Meta label="Category" value={ticket.category?.name || '—'} />
-            <Meta label="Time logged" value={fmtMin(totalMinutes)} />
-            <Meta label="SLA Due" value={ticket.slaDueAt ? fmt(ticket.slaDueAt) : '—'} />
+            <Meta
+              label="Assignee"
+              value={
+                isManager ? (
+                  <select
+                    value={ticket.assignee?.id || ''}
+                    onChange={(e) => run(assignTicket, { id, assigneeId: e.target.value || null })}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm outline-none focus:border-brand"
+                  >
+                    <option value="">Unassigned</option>
+                    {assignees?.map((a) => <option key={a.id} value={a.id}>{a.name} ({a.role.toLowerCase()})</option>)}
+                  </select>
+                ) : (
+                  ticket.assignee?.name || 'Unassigned'
+                )
+              }
+            />
+            <Meta label="Reporter" value={ticket.requester?.name} />
+            <Meta
+              label="Watchers"
+              value={
+                <span className="flex items-center gap-2">
+                  <span>{ticket.watchers?.length || 0}</span>
+                  <button
+                    onClick={() => run(watchTicket, { id, watching: amWatching })}
+                    className="text-xs text-brand hover:underline"
+                  >
+                    {amWatching ? 'Stop watching this issue' : 'Start watching this issue'}
+                  </button>
+                </span>
+              }
+            />
+          </dl>
+
+          <h4 className="mt-5 text-xs font-bold uppercase tracking-wide text-slate-400">Dates</h4>
+          <dl className="text-sm">
             <Meta label="Created" value={fmt(ticket.createdAt)} />
+            <Meta label="Updated" value={fmt(ticket.updatedAt)} />
+            <Meta label="SLA Due" value={ticket.slaDueAt ? fmt(ticket.slaDueAt) : '—'} />
+          </dl>
+
+          <h4 className="mt-5 text-xs font-bold uppercase tracking-wide text-slate-400">More</h4>
+          <dl className="text-sm">
+            {isManager && (
+              <Meta
+                label="Priority"
+                value={
+                  <select
+                    value={ticket.priority}
+                    onChange={(e) => run(changePriority, { id, priority: e.target.value })}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm outline-none focus:border-brand"
+                  >
+                    {PRIORITIES.map((p) => <option key={p} value={p}>{p[0] + p.slice(1).toLowerCase()}</option>)}
+                  </select>
+                }
+              />
+            )}
+            <Meta label="Category" value={ticket.category?.name || '—'} />
+            <Meta label="Label" value={ticket.label} />
+            <Meta label="Time logged" value={fmtMin(totalMinutes)} />
           </dl>
         </aside>
       </div>
     </AppLayout>
-  );
-}
-
-function Meta({ label, value }) {
-  return (
-    <>
-      <dt className="mt-3 text-[11px] uppercase tracking-wide text-slate-400">{label}</dt>
-      <dd className="mt-0.5 text-slate-700">{value}</dd>
-    </>
   );
 }

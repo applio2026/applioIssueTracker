@@ -1,6 +1,9 @@
 import dotenv from 'dotenv';
 
-dotenv.config();
+// override: values in api/.env beat ambient shell variables (e.g. a PORT
+// exported by another project in the same terminal). In production there is
+// no .env file — container env vars pass through untouched.
+dotenv.config({ override: true });
 
 function required(name, fallback) {
   const value = process.env[name] ?? fallback;

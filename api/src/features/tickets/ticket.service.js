@@ -84,6 +84,15 @@ export function canAccessTicket(user, ticket) {
   );
 }
 
+// Watcher user ids for notification fan-out.
+export async function watcherIds(ticketId) {
+  const rows = await prisma.ticketWatcher.findMany({
+    where: { ticketId },
+    select: { userId: true },
+  });
+  return rows.map((r) => r.userId);
+}
+
 export const ticketInclude = {
   category: { select: { id: true, name: true } },
   requester: { select: { id: true, name: true, email: true, role: true } },

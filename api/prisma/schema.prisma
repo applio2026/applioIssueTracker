@@ -69,6 +69,7 @@ model User {
   subTasksCreated  SubTask[]      @relation("SubTaskCreator")
   timeLogs         TimeLog[]
   ssoTokens        SsoToken[]
+  watching         TicketWatcher[]
 }
 
 // One-time SSO sign-in tokens issued via the integration API.
@@ -119,10 +120,38 @@ model Ticket {
   activities  Activity[]
   subTasks    SubTask[]
   timeLogs    TimeLog[]
+  watchers    TicketWatcher[]
+  linksFrom   TicketLink[]    @relation("LinkFrom")
+  linksTo     TicketLink[]    @relation("LinkTo")
 
   @@index([status])
   @@index([assigneeId])
   @@index([requesterId])
+}
+
+// Users following a ticket — they get notified about status changes/comments.
+model TicketWatcher {
+  id        String   @id @default(cuid())
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId  String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  createdAt DateTime @default(now())
+
+  @@unique([ticketId, userId])
+}
+
+// "Relates to" links between two tickets.
+model TicketLink {
+  id          String   @id @default(cuid())
+  from        Ticket   @relation("LinkFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  fromId      String
+  to          Ticket   @relation("LinkTo", fields: [toId], references: [id], onDelete: Cascade)
+  toId        String
+  createdById String
+  createdAt   DateTime @default(now())
+
+  @@unique([fromId, toId])
 }
 
 model SubTask {

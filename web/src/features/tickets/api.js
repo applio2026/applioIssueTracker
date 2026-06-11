@@ -83,6 +83,18 @@ export const useLogTime = () =>
 export const useDeleteTimeLog = () =>
   useTicketMutation(({ id, logId }) => api.delete(`/tickets/${id}/time/${logId}`));
 
+// Watching
+export const useWatchTicket = () =>
+  useTicketMutation(({ id, watching }) =>
+    watching ? api.delete(`/tickets/${id}/watch`) : api.post(`/tickets/${id}/watch`));
+
+// Issue links
+export const useAddLink = () =>
+  useTicketMutation(({ id, key }) => api.post(`/tickets/${id}/links`, { key }));
+
+export const useDeleteLink = () =>
+  useTicketMutation(({ id, linkId }) => api.delete(`/tickets/${id}/links/${linkId}`));
+
 export const useUploadAttachment = () =>
   useTicketMutation(({ id, file }) => {
     const form = new FormData();
