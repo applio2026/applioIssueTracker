@@ -7,6 +7,8 @@ import {
   computeSlaDueAt,
   canTransition,
   scopeWhereForUser,
+  canAccessTicket,
+  watcherIds,
   ticketInclude,
 } from './ticket.service.js';
 import { notify } from '../notifications/notification.service.js';
@@ -82,16 +84,31 @@ export const getTicket = asyncHandler(async (req, res) => {
         include: { actor: { select: { id: true, name: true } } },
       },
       attachments: true,
+      subTasks: {
+        orderBy: { createdAt: 'asc' },
+        include: {
+          assignee: { select: { id: true, name: true, role: true } },
+          createdBy: { select: { id: true, name: true } },
+        },
+      },
+      timeLogs: {
+        orderBy: { createdAt: 'desc' },
+        include: { user: { select: { id: true, name: true, role: true } } },
+      },
+      watchers: { select: { userId: true, user: { select: { id: true, name: true } } } },
+      linksFrom: {
+        include: { to: { select: { id: true, key: true, title: true, status: true } } },
+      },
+      linksTo: {
+        include: { from: { select: { id: true, key: true, title: true, status: true } } },
+      },
     },
   });
   if (!ticket) throw notFound('Ticket not found');
 
-  // Access check: managers see all; others only their own/assigned.
-  const allowed =
-    isManager(req.user) ||
-    ticket.requesterId === req.user.id ||
-    ticket.assigneeId === req.user.id;
-  if (!allowed) throw forbidden('You cannot view this ticket');
+  // Access check: managers see all; others their own/assigned tickets,
+  // including tickets where they own a sub-task.
+  if (!canAccessTicket(req.user, ticket)) throw forbidden('You cannot view this ticket');
 
   res.json({ ticket });
 });
@@ -101,6 +118,9 @@ export const createTicket = asyncHandler(async (req, res) => {
   const { title, description, categoryId, priority } = req.body;
   const slaDueAt = await computeSlaDueAt(categoryId, priority);
 
+  // Customers' tickets are labelled with their company; everyone else is "local".
+  const label = req.user.role === 'CUSTOMER' ? req.user.company || 'local' : 'local';
+
   const ticket = await prisma.$transaction(async (tx) => {
     const key = await nextTicketKey(tx);
     const created = await tx.ticket.create({
@@ -108,6 +128,7 @@ export const createTicket = asyncHandler(async (req, res) => {
         key,
         title,
         description,
+        label,
         priority,
         categoryId: categoryId || null,
         requesterId: req.user.id,
@@ -179,7 +200,7 @@ export const changeStatus = asyncHandler(async (req, res) => {
 
   const full = await prisma.ticket.findUnique({ where: { id: ticket.id }, include: ticketInclude });
 
-  await notify([ticket.requesterId, ticket.assigneeId], {
+  await notify([ticket.requesterId, ticket.assigneeId, ...(await watcherIds(ticket.id))], {
     type: 'STATUS_CHANGED',
     ticketId: ticket.id,
     message: `${full.key} moved to ${status} by ${req.user.name}`,
@@ -240,14 +261,13 @@ export const assignTicket = asyncHandler(async (req, res) => {
 
 // POST /api/tickets/:id/comments
 export const addComment = asyncHandler(async (req, res) => {
-  const ticket = await prisma.ticket.findUnique({ where: { id: req.params.id } });
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: req.params.id },
+    include: { subTasks: { select: { assigneeId: true } } },
+  });
   if (!ticket) throw notFound('Ticket not found');
 
-  const allowed =
-    isManager(req.user) ||
-    ticket.requesterId === req.user.id ||
-    ticket.assigneeId === req.user.id;
-  if (!allowed) throw forbidden('You cannot comment on this ticket');
+  if (!canAccessTicket(req.user, ticket)) throw forbidden('You cannot comment on this ticket');
 
   // Internal comments are staff-only.
   const isInternal = !!req.body.isInternal && isManager(req.user);
@@ -263,10 +283,11 @@ export const addComment = asyncHandler(async (req, res) => {
     return c;
   });
 
-  // Internal comments only notify staff (the assignee), not the requester.
+  // Internal comments only notify staff (the assignee), not the requester
+  // or watchers (who may be customers).
   const recipients = isInternal
     ? [ticket.assigneeId]
-    : [ticket.requesterId, ticket.assigneeId];
+    : [ticket.requesterId, ticket.assigneeId, ...(await watcherIds(ticket.id))];
   await notify(recipients, {
     type: 'TICKET_COMMENT',
     ticketId: ticket.id,

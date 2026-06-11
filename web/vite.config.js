@@ -10,7 +10,9 @@ export default defineConfig({
       '/api': {
         // 127.0.0.1 (not localhost) so we hit our API over IPv4, not an
         // unrelated IPv6 service that may also be on this port.
-        target: 'http://127.0.0.1:4100',
+        // 4150 because applio-billing-console occupies 4100 locally —
+        // keep in sync with PORT in api/.env.
+        target: 'http://127.0.0.1:4150',
         changeOrigin: true,
       },
     },

@@ -33,6 +33,12 @@ enum TicketStatus {
   REOPENED
 }
 
+enum SubTaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
 enum ActivityType {
   CREATED
   STATUS_CHANGED
@@ -49,6 +55,7 @@ model User {
   passwordHash String
   role         Role     @default(CUSTOMER)
   department   String?
+  company      String?  // Required for CUSTOMER accounts; drives a ticket's label.
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -58,6 +65,22 @@ model User {
   comments         Comment[]
   activities       Activity[]
   notifications    Notification[]
+  subTasksAssigned SubTask[]      @relation("SubTaskAssignee")
+  subTasksCreated  SubTask[]      @relation("SubTaskCreator")
+  timeLogs         TimeLog[]
+  ssoTokens        SsoToken[]
+  watching         TicketWatcher[]
+}
+
+// One-time SSO sign-in tokens issued via the integration API.
+// Only a SHA-256 hash of the token is stored; rows are deleted on use.
+model SsoToken {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
 }
 
 model Category {
@@ -75,6 +98,7 @@ model Ticket {
   key         String       @unique // e.g. UNIV-101
   title       String
   description String
+  label       String       @default("local") // Customer's company name, else "local".
   status      TicketStatus @default(NEW)
   priority    Priority     @default(MEDIUM)
 
@@ -94,10 +118,71 @@ model Ticket {
   comments    Comment[]
   attachments Attachment[]
   activities  Activity[]
+  subTasks    SubTask[]
+  timeLogs    TimeLog[]
+  watchers    TicketWatcher[]
+  linksFrom   TicketLink[]    @relation("LinkFrom")
+  linksTo     TicketLink[]    @relation("LinkTo")
 
   @@index([status])
   @@index([assigneeId])
   @@index([requesterId])
+}
+
+// Users following a ticket — they get notified about status changes/comments.
+model TicketWatcher {
+  id        String   @id @default(cuid())
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId  String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  createdAt DateTime @default(now())
+
+  @@unique([ticketId, userId])
+}
+
+// "Relates to" links between two tickets.
+model TicketLink {
+  id          String   @id @default(cuid())
+  from        Ticket   @relation("LinkFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  fromId      String
+  to          Ticket   @relation("LinkTo", fields: [toId], references: [id], onDelete: Cascade)
+  toId        String
+  createdById String
+  createdAt   DateTime @default(now())
+
+  @@unique([fromId, toId])
+}
+
+model SubTask {
+  id          String        @id @default(cuid())
+  ticket      Ticket        @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId    String
+  title       String
+  status      SubTaskStatus @default(TODO)
+  assignee    User?         @relation("SubTaskAssignee", fields: [assigneeId], references: [id])
+  assigneeId  String?
+  createdBy   User          @relation("SubTaskCreator", fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([ticketId])
+  @@index([assigneeId])
+}
+
+// Work time logged against a ticket, in minutes.
+model TimeLog {
+  id        String   @id @default(cuid())
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId  String
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  minutes   Int
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([ticketId])
 }
 
 model Comment {

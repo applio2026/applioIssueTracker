@@ -11,7 +11,7 @@ const ROLES = [
 ];
 const ROLE_LABEL = Object.fromEntries(ROLES.map((r) => [r.value, r.label.split(' / ')[0]]));
 
-const EMPTY = { name: '', email: '', role: 'CUSTOMER', department: '', password: '' };
+const EMPTY = { name: '', email: '', role: 'CUSTOMER', department: '', company: '', password: '' };
 
 export default function UsersPage() {
   const qc = useQueryClient();
@@ -44,7 +44,11 @@ export default function UsersPage() {
   const submit = (e) => {
     e.preventDefault();
     setMsg(null);
-    createUser.mutate(form);
+    // Company only applies to customers.
+    const payload = { ...form };
+    if (payload.role === 'CUSTOMER') payload.company = payload.company.trim();
+    else delete payload.company;
+    createUser.mutate(payload);
   };
 
   return (
@@ -65,6 +69,7 @@ export default function UsersPage() {
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Role</th>
+                <th className="px-4 py-3">Company</th>
                 <th className="px-4 py-3">Dept</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3"></th>
@@ -72,7 +77,7 @@ export default function UsersPage() {
             </thead>
             <tbody>
               {isLoading && (
-                <tr><td colSpan="6" className="px-4 py-6 text-center text-slate-400">Loading…</td></tr>
+                <tr><td colSpan="7" className="px-4 py-6 text-center text-slate-400">Loading…</td></tr>
               )}
               {data?.map((u) => (
                 <tr key={u.id} className="border-b border-slate-100 hover:bg-slate-50">
@@ -83,6 +88,7 @@ export default function UsersPage() {
                       {ROLE_LABEL[u.role]}
                     </span>
                   </td>
+                  <td className="px-4 py-3 text-slate-500">{u.company || '—'}</td>
                   <td className="px-4 py-3 text-slate-500">{u.department || '—'}</td>
                   <td className="px-4 py-3">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-semibold text-white ${u.isActive ? 'bg-emerald-500' : 'bg-slate-400'}`}>
@@ -124,6 +130,11 @@ export default function UsersPage() {
               {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
           </Field>
+          {form.role === 'CUSTOMER' && (
+            <Field label="Company *">
+              <input required value={form.company} onChange={set('company')} className={inputCls} placeholder="e.g. Acme Corp" />
+            </Field>
+          )}
           <Field label="Department">
             <input value={form.department} onChange={set('department')} className={inputCls} placeholder="e.g. Network" />
           </Field>

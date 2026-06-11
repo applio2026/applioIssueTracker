@@ -64,6 +64,37 @@ export const useChangePriority = () =>
 export const useAddComment = () =>
   useTicketMutation(({ id, body }) => api.post(`/tickets/${id}/comments`, { body }));
 
+// Sub-tasks
+export const useAddSubTask = () =>
+  useTicketMutation(({ id, title, assigneeId }) =>
+    api.post(`/tickets/${id}/subtasks`, { title, assigneeId: assigneeId || undefined }));
+
+export const useUpdateSubTask = () =>
+  useTicketMutation(({ id, subId, ...data }) => api.patch(`/tickets/${id}/subtasks/${subId}`, data));
+
+export const useDeleteSubTask = () =>
+  useTicketMutation(({ id, subId }) => api.delete(`/tickets/${id}/subtasks/${subId}`));
+
+// Time logs
+export const useLogTime = () =>
+  useTicketMutation(({ id, minutes, note }) =>
+    api.post(`/tickets/${id}/time`, { minutes, note: note || undefined }));
+
+export const useDeleteTimeLog = () =>
+  useTicketMutation(({ id, logId }) => api.delete(`/tickets/${id}/time/${logId}`));
+
+// Watching
+export const useWatchTicket = () =>
+  useTicketMutation(({ id, watching }) =>
+    watching ? api.delete(`/tickets/${id}/watch`) : api.post(`/tickets/${id}/watch`));
+
+// Issue links
+export const useAddLink = () =>
+  useTicketMutation(({ id, key }) => api.post(`/tickets/${id}/links`, { key }));
+
+export const useDeleteLink = () =>
+  useTicketMutation(({ id, linkId }) => api.delete(`/tickets/${id}/links/${linkId}`));
+
 export const useUploadAttachment = () =>
   useTicketMutation(({ id, file }) => {
     const form = new FormData();

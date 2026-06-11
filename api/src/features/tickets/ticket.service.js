@@ -49,19 +49,48 @@ export async function computeSlaDueAt(categoryId, priority, from = new Date()) {
   return new Date(from.getTime() + hours * 60 * 60 * 1000);
 }
 
+export const isManager = (u) => ['ADMIN', 'SUPER_ADMIN'].includes(u.role);
+
 // Build a Prisma `where` clause scoped to what the user is allowed to see.
 export function scopeWhereForUser(user) {
   switch (user.role) {
     case 'CUSTOMER':
       return { requesterId: user.id };
     case 'DEVELOPER':
-      // Developers see tickets assigned to them or that they raised.
-      return { OR: [{ assigneeId: user.id }, { requesterId: user.id }] };
+      // Developers see tickets assigned to them, that they raised, or where
+      // they own a sub-task.
+      return {
+        OR: [
+          { assigneeId: user.id },
+          { requesterId: user.id },
+          { subTasks: { some: { assigneeId: user.id } } },
+        ],
+      };
     case 'ADMIN':
     case 'SUPER_ADMIN':
     default:
       return {};
   }
+}
+
+// True if the user may view/collaborate on the ticket. `ticket.subTasks`
+// must be loaded (assigneeId is enough) for sub-task assignees to qualify.
+export function canAccessTicket(user, ticket) {
+  return (
+    isManager(user) ||
+    ticket.requesterId === user.id ||
+    ticket.assigneeId === user.id ||
+    (ticket.subTasks?.some((s) => s.assigneeId === user.id) ?? false)
+  );
+}
+
+// Watcher user ids for notification fan-out.
+export async function watcherIds(ticketId) {
+  const rows = await prisma.ticketWatcher.findMany({
+    where: { ticketId },
+    select: { userId: true },
+  });
+  return rows.map((r) => r.userId);
 }
 
 export const ticketInclude = {

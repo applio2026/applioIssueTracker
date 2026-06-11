@@ -1,6 +1,9 @@
 import dotenv from 'dotenv';
 
-dotenv.config();
+// override: values in api/.env beat ambient shell variables (e.g. a PORT
+// exported by another project in the same terminal). In production there is
+// no .env file — container env vars pass through untouched.
+dotenv.config({ override: true });
 
 function required(name, fallback) {
   const value = process.env[name] ?? fallback;
@@ -19,6 +22,10 @@ export const env = {
     refreshSecret: required('JWT_REFRESH_SECRET', 'dev-refresh-secret-change-me'),
     accessTtl: process.env.ACCESS_TOKEN_TTL || '15m',
     refreshTtl: process.env.REFRESH_TOKEN_TTL || '7d',
+  },
+  // Shared secret a partner application sends (x-api-key) to provision logins.
+  integration: {
+    apiKey: process.env.INTEGRATION_API_KEY || '',
   },
   smtp: {
     host: process.env.SMTP_HOST || '',
