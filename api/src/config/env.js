@@ -27,6 +27,12 @@ export const env = {
   integration: {
     apiKey: process.env.INTEGRATION_API_KEY || '',
   },
+  // Extra origins (comma-separated) allowed by CORS — the public marketing
+  // sites whose forms post to /api/public/*.
+  publicCorsOrigins: (process.env.PUBLIC_CORS_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
   smtp: {
     host: process.env.SMTP_HOST || '',
     port: Number(process.env.SMTP_PORT || 587),

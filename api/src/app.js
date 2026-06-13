@@ -13,7 +13,16 @@ export function createApp() {
   // real client IP from X-Forwarded-For instead of the proxy's.
   app.set('trust proxy', 1);
 
-  app.use(cors({ origin: env.clientUrl, credentials: true }));
+  // The tracker's own frontend plus any public marketing sites whose forms
+  // post to /api/public/* (PUBLIC_CORS_ORIGINS). Non-browser requests (no
+  // Origin header) pass through.
+  const corsAllowlist = [env.clientUrl, ...env.publicCorsOrigins];
+  app.use(
+    cors({
+      origin: (origin, cb) => cb(null, !origin || corsAllowlist.includes(origin)),
+      credentials: true,
+    }),
+  );
   app.use(express.json());
   app.use(cookieParser());
   if (env.nodeEnv === 'development') app.use(morgan('dev'));

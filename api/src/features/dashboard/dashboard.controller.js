@@ -11,6 +11,7 @@ function buildFilters(query) {
   const scoped = {};
   if (query.label) scoped.label = query.label;
   if (query.priority) scoped.priority = query.priority;
+  if (query.categoryId) scoped.categoryId = query.categoryId;
 
   const createdAt = {};
   if (query.from) {
@@ -66,7 +67,13 @@ export const getStats = asyncHandler(async (req, res) => {
     // Created in the last 7 days, for the daily trend (label/severity/open
     // filters apply; the trend window stays at 7 days).
     prisma.ticket.findMany({
-      where: { label: scoped.label, priority: scoped.priority, ...open, createdAt: { gte: since7 } },
+      where: {
+        label: scoped.label,
+        priority: scoped.priority,
+        categoryId: scoped.categoryId,
+        ...open,
+        createdAt: { gte: since7 },
+      },
       select: { createdAt: true },
     }),
     prisma.user.findMany({

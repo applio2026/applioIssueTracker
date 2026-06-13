@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import AppLayout from '../components/AppLayout.jsx';
 import { StatusBadge, PriorityBadge } from '../components/Badges.jsx';
 import { useTickets, useCategories } from '../features/tickets/api.js';
@@ -8,6 +8,8 @@ import NewTicketModal from '../features/tickets/NewTicketModal.jsx';
 
 const selectCls =
   'rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand';
+
+const VIEW_LABEL = { open: 'Open issues', resolved7d: 'Resolved (7d)', breached: 'SLA breached' };
 
 function timeAgo(iso) {
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -19,13 +21,37 @@ function timeAgo(iso) {
 
 export default function TicketsPage() {
   const navigate = useNavigate();
-  const [filters, setFilters] = useState({ status: '', priority: '', categoryId: '', q: '' });
+  const [params] = useSearchParams();
+  // Dashboard drill-downs land here with filters in the URL.
+  const [filters, setFilters] = useState(() => ({
+    status: params.get('status') || '',
+    priority: params.get('priority') || '',
+    categoryId: params.get('categoryId') || '',
+    q: params.get('q') || '',
+    view: params.get('view') || '',
+    label: params.get('label') || '',
+    from: params.get('from') || '',
+    to: params.get('to') || '',
+    assigneeId: params.get('assigneeId') || '',
+  }));
+  const assigneeName = params.get('assigneeName') || '';
   const [showNew, setShowNew] = useState(false);
 
   const { data: tickets, isLoading } = useTickets(filters);
   const { data: categories } = useCategories();
 
   const set = (k) => (e) => setFilters((f) => ({ ...f, [k]: e.target.value }));
+  const clear = (k) => () => setFilters((f) => ({ ...f, [k]: '' }));
+
+  // Filters that came from a dashboard drill-down (no dedicated control here)
+  // are shown as removable chips.
+  const chips = [
+    filters.view && { k: 'view', text: VIEW_LABEL[filters.view] || filters.view },
+    filters.label && { k: 'label', text: `Label: ${filters.label}` },
+    filters.from && { k: 'from', text: `From: ${filters.from}` },
+    filters.to && { k: 'to', text: `To: ${filters.to}` },
+    filters.assigneeId && { k: 'assigneeId', text: `Assignee: ${assigneeName || 'filtered'}` },
+  ].filter(Boolean);
 
   return (
     <AppLayout>
@@ -55,6 +81,18 @@ export default function TicketsPage() {
           {categories?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       </div>
+
+      {/* Drill-down filter chips */}
+      {chips.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          {chips.map((c) => (
+            <span key={c.k} className="flex items-center gap-1.5 rounded-full bg-brand/10 px-3 py-1 text-xs font-medium text-brand">
+              {c.text}
+              <button onClick={clear(c.k)} className="hover:text-red-500" title="Remove filter">✕</button>
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Table */}
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
