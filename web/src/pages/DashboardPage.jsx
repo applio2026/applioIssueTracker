@@ -1,11 +1,13 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import AppLayout from '../components/AppLayout.jsx';
 import { useDashboardStats, downloadTicketsCsv } from '../features/dashboard/api.js';
+import { useCategories } from '../features/tickets/api.js';
 import { STATUS_META, PRIORITIES } from '../features/tickets/constants.js';
 
 const ROLE_LABEL = { DEVELOPER: 'Developer', ADMIN: 'Admin', SUPER_ADMIN: 'Super Admin' };
 
-const EMPTY_FILTERS = { label: '', priority: '', from: '', to: '', openOnly: '' };
+const EMPTY_FILTERS = { label: '', priority: '', categoryId: '', from: '', to: '', openOnly: '' };
 
 const selectCls =
   'rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand';
@@ -13,10 +15,25 @@ const selectCls =
 export default function DashboardPage() {
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const { data, isLoading } = useDashboardStats(filters);
+  const { data: categories } = useCategories();
   const [downloading, setDownloading] = useState(false);
 
   const set = (k) => (e) => setFilters((f) => ({ ...f, [k]: e.target.value }));
   const hasFilters = Object.values(filters).some(Boolean);
+
+  // Drill-down URL to the tickets list, carrying the active dashboard filters.
+  const ticketsUrl = (extra = {}) => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries({
+      label: filters.label,
+      priority: filters.priority,
+      categoryId: filters.categoryId,
+      from: filters.from,
+      to: filters.to,
+      ...extra,
+    })) if (v) p.set(k, v);
+    return `/tickets?${p.toString()}`;
+  };
 
   const exportCsv = async () => {
     setDownloading(true);
@@ -53,6 +70,10 @@ export default function DashboardPage() {
           <option value="">All severities</option>
           {PRIORITIES.map((p) => <option key={p} value={p}>{p[0] + p.slice(1).toLowerCase()}</option>)}
         </select>
+        <select value={filters.categoryId} onChange={set('categoryId')} className={selectCls}>
+          <option value="">All categories</option>
+          {categories?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
         <label className="flex items-center gap-1.5 text-sm text-slate-500">
           From
           <input type="date" value={filters.from} onChange={set('from')} className={selectCls} />
@@ -77,12 +98,12 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* KPIs */}
+      {/* KPIs — click a number to open those tickets */}
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label="Open Tickets" value={kpis.open} />
-        <Kpi label="Resolved (7d)" value={kpis.resolved7d} />
+        <Kpi label="Open Tickets" value={kpis.open} to={ticketsUrl({ view: 'open' })} />
+        <Kpi label="Resolved (7d)" value={kpis.resolved7d} to={ticketsUrl({ view: 'resolved7d' })} />
         <Kpi label="Avg. Resolution" value={`${kpis.avgResolutionHours}h`} />
-        <Kpi label="SLA Breaches" value={kpis.slaBreaches} danger={kpis.slaBreaches > 0} />
+        <Kpi label="SLA Breaches" value={kpis.slaBreaches} danger={kpis.slaBreaches > 0} to={ticketsUrl({ view: 'breached' })} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -107,7 +128,7 @@ export default function DashboardPage() {
         {/* Status donut */}
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <h3 className="mb-4 text-sm font-bold text-slate-700">By status</h3>
-          <StatusDonut byStatus={byStatus} total={totalTickets} />
+          <StatusDonut byStatus={byStatus} total={totalTickets} linkFor={(s) => ticketsUrl({ status: s })} />
         </div>
       </div>
 
@@ -131,9 +152,15 @@ export default function DashboardPage() {
                 <td className="px-4 py-3 font-medium text-slate-700">{w.name}</td>
                 <td className="px-4 py-3 text-slate-500">{ROLE_LABEL[w.role] || w.role}</td>
                 <td className="px-4 py-3 text-slate-500">{w.department || '—'}</td>
-                <td className="px-4 py-3 text-slate-700">{w.active}</td>
-                <td className="px-4 py-3 text-slate-700">{w.resolved7d}</td>
-                <td className={`px-4 py-3 font-semibold ${w.breaches > 0 ? 'text-red-600' : 'text-slate-400'}`}>{w.breaches}</td>
+                <td className="px-4 py-3">
+                  <Link to={ticketsUrl({ view: 'open', assigneeId: w.id, assigneeName: w.name })} className="text-slate-700 hover:text-brand hover:underline">{w.active}</Link>
+                </td>
+                <td className="px-4 py-3">
+                  <Link to={ticketsUrl({ view: 'resolved7d', assigneeId: w.id, assigneeName: w.name })} className="text-slate-700 hover:text-brand hover:underline">{w.resolved7d}</Link>
+                </td>
+                <td className="px-4 py-3">
+                  <Link to={ticketsUrl({ view: 'breached', assigneeId: w.id, assigneeName: w.name })} className={`font-semibold hover:underline ${w.breaches > 0 ? 'text-red-600' : 'text-slate-400 hover:text-brand'}`}>{w.breaches}</Link>
+                </td>
               </tr>
             ))}
             {workload.length === 0 && (
@@ -146,17 +173,25 @@ export default function DashboardPage() {
   );
 }
 
-function Kpi({ label, value, danger }) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
+function Kpi({ label, value, danger, to }) {
+  const body = (
+    <>
       <div className="text-xs text-slate-400">{label}</div>
       <div className={`mt-1 text-3xl font-extrabold ${danger ? 'text-red-600' : 'text-slate-800'}`}>{value}</div>
-    </div>
+    </>
   );
+  if (to) {
+    return (
+      <Link to={to} title="View these tickets" className="block rounded-xl border border-slate-200 bg-white p-4 transition hover:border-brand hover:shadow-sm">
+        {body}
+      </Link>
+    );
+  }
+  return <div className="rounded-xl border border-slate-200 bg-white p-4">{body}</div>;
 }
 
 // SVG donut built from the status breakdown (no chart library needed).
-function StatusDonut({ byStatus, total }) {
+function StatusDonut({ byStatus, total, linkFor }) {
   const tailwindToHex = {
     'bg-slate-500': '#64748b', 'bg-blue-600': '#2563eb', 'bg-amber-500': '#f59e0b',
     'bg-violet-500': '#8b5cf6', 'bg-cyan-500': '#06b6d4', 'bg-emerald-500': '#10b981',
@@ -193,10 +228,15 @@ function StatusDonut({ byStatus, total }) {
       </svg>
       <div className="space-y-1 text-xs">
         {data.map((s) => (
-          <div key={s.status} className="flex items-center gap-2 text-slate-500">
+          <Link
+            key={s.status}
+            to={linkFor(s.status)}
+            title="View these tickets"
+            className="flex items-center gap-2 text-slate-500 hover:text-brand hover:underline"
+          >
             <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: tailwindToHex[STATUS_META[s.status]?.cls] || '#cbd5e1' }} />
             {STATUS_META[s.status]?.label || s.status} · {s.count}
-          </div>
+          </Link>
         ))}
       </div>
     </div>

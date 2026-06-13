@@ -36,6 +36,11 @@ services:
       # Frontend URL
       CLIENT_URL: "http://103.189.89.128:8092"
 
+      # Origins of public marketing sites allowed to post forms to
+      # /api/public/* (comma-separated). Set this to the Applio Stack
+      # landing page's real origin (scheme + host + port, no path).
+      PUBLIC_CORS_ORIGINS: "http://103.189.89.128:8094"
+
       JWT_ACCESS_SECRET: "change-me-access"
       JWT_REFRESH_SECRET: "change-me-refresh"
 

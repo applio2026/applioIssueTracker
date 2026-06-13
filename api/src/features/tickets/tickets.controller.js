@@ -10,6 +10,8 @@ import {
   canAccessTicket,
   watcherIds,
   ticketInclude,
+  OPEN_STATUSES,
+  DONE_STATUSES,
 } from './ticket.service.js';
 import { notify } from '../notifications/notification.service.js';
 
@@ -47,13 +49,34 @@ export const commentSchema = z.object({
 
 // GET /api/tickets  (role-scoped, with filters)
 export const listTickets = asyncHandler(async (req, res) => {
-  const { status, priority, categoryId, assigneeId, q } = req.query;
+  const { status, priority, categoryId, assigneeId, q, label, from, to, view } = req.query;
   const where = { ...scopeWhereForUser(req.user) };
+
+  // Dashboard drill-down views; an explicit `status` below overrides them.
+  if (view === 'open') {
+    where.status = { in: OPEN_STATUSES };
+  } else if (view === 'breached') {
+    where.status = { in: OPEN_STATUSES };
+    where.slaDueAt = { lt: new Date() };
+  } else if (view === 'resolved7d') {
+    where.status = { in: DONE_STATUSES };
+    where.updatedAt = { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) };
+  }
 
   if (status) where.status = status;
   if (priority) where.priority = priority;
   if (categoryId) where.categoryId = categoryId;
   if (assigneeId) where.assigneeId = assigneeId;
+  if (label) where.label = label;
+  if (from || to) {
+    where.createdAt = {};
+    if (from) where.createdAt.gte = new Date(from);
+    if (to) {
+      const d = new Date(to);
+      d.setHours(23, 59, 59, 999);
+      where.createdAt.lte = d;
+    }
+  }
   if (q) {
     where.OR = [
       { title: { contains: q, mode: 'insensitive' } },
