@@ -44,6 +44,12 @@ services:
       JWT_ACCESS_SECRET: "change-me-access"
       JWT_REFRESH_SECRET: "change-me-refresh"
 
+      # Shared secret the main app (applioUni) sends as `x-api-key` to provision
+      # ticket logins and mint SSO links. MUST match the main app backend's
+      # INTEGRATION_API_KEY exactly, or integration calls fail (503 if empty here,
+      # 401 if it differs from the app's value).
+      INTEGRATION_API_KEY: "lz8AysX2imjcDcNWUMbXieaSGxrZKdTBoOFJ6h-zMA0"
+
       ACCESS_TOKEN_TTL: "15m"
       REFRESH_TOKEN_TTL: "7d"
 
