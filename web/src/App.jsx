@@ -42,7 +42,7 @@ export default function App() {
       <Route
         path="/dashboard"
         element={
-          <ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN']}>
+          <ProtectedRoute permission="canViewDashboard">
             <DashboardPage />
           </ProtectedRoute>
         }
@@ -50,7 +50,7 @@ export default function App() {
       <Route
         path="/admin/users"
         element={
-          <ProtectedRoute roles={['SUPER_ADMIN']}>
+          <ProtectedRoute permission="canManageUsers">
             <UsersPage />
           </ProtectedRoute>
         }

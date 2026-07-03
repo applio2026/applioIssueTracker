@@ -10,6 +10,7 @@ import {
   hashSsoToken,
 } from '../../utils/tokens.js';
 import { createCaptcha, verifyCaptchaAnswer } from './captcha.service.js';
+import { effectivePermissions } from '../users/permissions.js';
 
 export const loginSchema = z.object({
   email: z.string().email(),
@@ -29,6 +30,7 @@ const publicUser = (u) => ({
   email: u.email,
   role: u.role,
   department: u.department,
+  permissions: effectivePermissions(u),
 });
 
 const REFRESH_COOKIE = 'refreshToken';
