@@ -5,21 +5,40 @@ import dotenv from 'dotenv';
 // no .env file — container env vars pass through untouched.
 dotenv.config({ override: true });
 
-function required(name, fallback) {
-  const value = process.env[name] ?? fallback;
-  if (value === undefined) {
-    throw new Error(`Missing required environment variable: ${name}`);
+const nodeEnv = process.env.NODE_ENV || 'development';
+const isProd = nodeEnv === 'production';
+
+// Dev conveniences that must NEVER be used in production. If any of these
+// leaks into a prod deploy, anyone who has read the repo can forge tokens.
+const DEV_DEFAULTS = {
+  JWT_ACCESS_SECRET: 'dev-access-secret-change-me',
+  JWT_REFRESH_SECRET: 'dev-refresh-secret-change-me',
+};
+
+// Load a security-critical secret. In production it must be present, long, and
+// not one of the well-known dev defaults — otherwise the process refuses to
+// boot (fail closed). In development we fall back to the dev default.
+function secret(name) {
+  const value = process.env[name];
+  if (isProd) {
+    const weak = !value || value.length < 32 || value === DEV_DEFAULTS[name] || /change[-_]?me/i.test(value);
+    if (weak) {
+      throw new Error(
+        `${name} must be set to a strong secret (32+ chars, not a placeholder) in production. Refusing to start.`,
+      );
+    }
+    return value;
   }
-  return value;
+  return value || DEV_DEFAULTS[name];
 }
 
 export const env = {
   port: Number(process.env.PORT || 4000),
-  nodeEnv: process.env.NODE_ENV || 'development',
+  nodeEnv,
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
   jwt: {
-    accessSecret: required('JWT_ACCESS_SECRET', 'dev-access-secret-change-me'),
-    refreshSecret: required('JWT_REFRESH_SECRET', 'dev-refresh-secret-change-me'),
+    accessSecret: secret('JWT_ACCESS_SECRET'),
+    refreshSecret: secret('JWT_REFRESH_SECRET'),
     accessTtl: process.env.ACCESS_TOKEN_TTL || '15m',
     refreshTtl: process.env.REFRESH_TOKEN_TTL || '7d',
   },

@@ -68,10 +68,15 @@ const withDepartments = {
 
 // Only a Super Admin may create/keep Super Admins or grant "manage users" —
 // prevents a delegated user-manager from escalating their own privileges.
-function guardEscalation(actor, body) {
+function guardEscalation(actor, body, target) {
   if (actor.role === 'SUPER_ADMIN') return;
   if (body.role === 'SUPER_ADMIN' || body.canManageUsers === true) {
     throw forbidden('Only a Super Admin can grant Super Admin or user-management access');
+  }
+  // Prevent takeover of the top role: a delegated user-manager cannot reset,
+  // disable, or demote an existing Super Admin.
+  if (target && target.role === 'SUPER_ADMIN') {
+    throw forbidden('Only a Super Admin can modify a Super Admin account');
   }
 }
 
@@ -124,7 +129,7 @@ export const updateUser = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const existing = await prisma.user.findUnique({ where: { id } });
   if (!existing) throw notFound('User not found');
-  guardEscalation(req.user, req.body);
+  guardEscalation(req.user, req.body, existing);
 
   const { departmentIds, password, ...rest } = req.body;
   const data = { ...rest };

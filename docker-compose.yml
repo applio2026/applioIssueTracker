@@ -1,5 +1,9 @@
 # Full stack: db + api + web
 # Production URL: http://103.189.89.128:8092
+#
+# Secrets are NOT committed here — put them in a `.env` file next to this file
+# (see .env.example). `docker compose up` fails fast if a required value is
+# missing, so the app can never boot with placeholder secrets.
 
 services:
   db:
@@ -8,10 +12,12 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: tracking
-      POSTGRES_PASSWORD: tracking
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set a strong POSTGRES_PASSWORD in .env}
       POSTGRES_DB: tracking
     ports:
-      - "5436:5432"
+      # Bound to localhost only — Postgres must not be reachable from the public
+      # internet. The API talks to it over the internal compose network.
+      - "127.0.0.1:5436:5432"
     volumes:
       - tracking_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -29,7 +35,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: "postgresql://tracking:tracking@db:5432/tracking?schema=public"
+      DATABASE_URL: "postgresql://tracking:${POSTGRES_PASSWORD}@db:5432/tracking?schema=public"
       PORT: "4100"
       NODE_ENV: "production"
 
@@ -41,29 +47,31 @@ services:
       # landing page's real origin (scheme + host + port, no path).
       PUBLIC_CORS_ORIGINS: "http://103.189.89.128:8094"
 
-      JWT_ACCESS_SECRET: "change-me-access"
-      JWT_REFRESH_SECRET: "change-me-refresh"
+      # Token-signing secrets — MUST be strong (32+ random chars). The API
+      # refuses to boot in production if these are missing or placeholders.
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set a strong JWT_ACCESS_SECRET in .env}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set a strong JWT_REFRESH_SECRET in .env}
 
       # Shared secret the main app (applioUni) sends as `x-api-key` to provision
       # ticket logins and mint SSO links. MUST match the main app backend's
-      # INTEGRATION_API_KEY exactly, or integration calls fail (503 if empty here,
-      # 401 if it differs from the app's value).
-      INTEGRATION_API_KEY: "lz8AysX2imjcDcNWUMbXieaSGxrZKdTBoOFJ6h-zMA0"
+      # INTEGRATION_API_KEY exactly.
+      INTEGRATION_API_KEY: ${INTEGRATION_API_KEY:?set INTEGRATION_API_KEY in .env}
 
       ACCESS_TOKEN_TTL: "15m"
       REFRESH_TOKEN_TTL: "7d"
 
       # SMTP Configuration
-      SMTP_HOST: ""
-      SMTP_PORT: "587"
-      SMTP_USER: ""
-      SMTP_PASS: ""
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_PASS: "${SMTP_PASS:-}"
 
       MAIL_FROM: "Tracking System <no-reply@university.edu>"
 
-      # Initial Super Admin
-      SEED_SUPERADMIN_EMAIL: "superadmin@university.edu"
-      SEED_SUPERADMIN_PASSWORD: "Admin@123"
+      # Initial Super Admin — set a strong password; seeding refuses the
+      # default 'Admin@123' in production.
+      SEED_SUPERADMIN_EMAIL: "${SEED_SUPERADMIN_EMAIL:-superadmin@university.edu}"
+      SEED_SUPERADMIN_PASSWORD: ${SEED_SUPERADMIN_PASSWORD:?set a strong SEED_SUPERADMIN_PASSWORD in .env}
       SEED_SUPERADMIN_NAME: "Super Admin"
 
     volumes:
