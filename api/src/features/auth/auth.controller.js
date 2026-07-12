@@ -10,6 +10,7 @@ import {
   hashSsoToken,
 } from '../../utils/tokens.js';
 import { createCaptcha, verifyCaptchaAnswer } from './captcha.service.js';
+import { effectivePermissions } from '../users/permissions.js';
 
 export const loginSchema = z.object({
   email: z.string().email(),
@@ -29,7 +30,12 @@ const publicUser = (u) => ({
   email: u.email,
   role: u.role,
   department: u.department,
+  permissions: effectivePermissions(u),
 });
+
+// A valid bcrypt hash used to equalize login timing when the account doesn't
+// exist, so an attacker can't distinguish "no such user" from "wrong password".
+const DUMMY_HASH = bcrypt.hashSync('timing-equalizer-not-a-real-password', 10);
 
 const REFRESH_COOKIE = 'refreshToken';
 const cookieOpts = {
@@ -48,10 +54,11 @@ export const login = asyncHandler(async (req, res) => {
   }
 
   const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
-  if (!user || !user.isActive) throw unauthorized('Invalid credentials');
-
-  const ok = await bcrypt.compare(password, user.passwordHash);
-  if (!ok) throw unauthorized('Invalid credentials');
+  // Always run a bcrypt compare (against a dummy hash when the user is missing)
+  // so timing doesn't reveal whether the account exists. Same generic message
+  // for unknown user, wrong password, and inactive account — no enumeration.
+  const ok = await bcrypt.compare(password, user?.passwordHash || DUMMY_HASH);
+  if (!user || !user.isActive || !ok) throw unauthorized('Invalid credentials');
 
   res.cookie(REFRESH_COOKIE, signRefreshToken(user), cookieOpts);
   res.json({ accessToken: signAccessToken(user), user: publicUser(user) });

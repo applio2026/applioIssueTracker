@@ -27,7 +27,8 @@ export default function AppLayout({ children }) {
   const navigate = useNavigate();
 
   const isStaff = ['DEVELOPER', 'ADMIN', 'SUPER_ADMIN'].includes(user.role);
-  const isManager = ['ADMIN', 'SUPER_ADMIN'].includes(user.role);
+  const p = user.permissions || {};
+  const showAdmin = p.canManageUsers || user.role === 'SUPER_ADMIN';
 
   const handleLogout = async () => {
     await logout();
@@ -53,22 +54,26 @@ export default function AppLayout({ children }) {
               🗂️ Board
             </NavLink>
           )}
-          {isManager && (
+          {p.canViewDashboard && (
             <NavLink to="/dashboard" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : ''}`}>
               📊 Dashboard
             </NavLink>
           )}
-          {user.role === 'SUPER_ADMIN' && (
+          {showAdmin && (
             <>
               <div className="px-3 pt-4 pb-1 text-[11px] uppercase tracking-wide text-slate-500">
                 Admin
               </div>
-              <NavLink to="/admin/users" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : ''}`}>
-                👥 Users
-              </NavLink>
-              <NavLink to="/admin/settings" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : ''}`}>
-                ⚙️ Settings
-              </NavLink>
+              {p.canManageUsers && (
+                <NavLink to="/admin/users" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : ''}`}>
+                  👥 Users
+                </NavLink>
+              )}
+              {user.role === 'SUPER_ADMIN' && (
+                <NavLink to="/admin/settings" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : ''}`}>
+                  ⚙️ Settings
+                </NavLink>
+              )}
             </>
           )}
         </nav>

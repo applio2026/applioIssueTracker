@@ -20,7 +20,18 @@ const DEFAULT_CATEGORIES = [
   { name: 'Library', defaultTeam: 'Library', defaultSlaHours: 72 },
 ];
 
+const DEFAULT_ADMIN_PASSWORD = 'Admin@123';
+
 async function main() {
+  // Never seed the top account with the well-known default password in
+  // production — that would leave superadmin wide open to anyone reading the repo.
+  if (process.env.NODE_ENV === 'production' && SUPER.password === DEFAULT_ADMIN_PASSWORD) {
+    throw new Error(
+      'Refusing to seed the Super Admin with the default password in production. ' +
+        'Set SEED_SUPERADMIN_PASSWORD to a strong value first.',
+    );
+  }
+
   // Super Admin (idempotent)
   const passwordHash = await bcrypt.hash(SUPER.password, 10);
   const admin = await prisma.user.upsert({

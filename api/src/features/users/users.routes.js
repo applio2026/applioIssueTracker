@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAuth, requireRole } from '../../middleware/auth.js';
+import { requireAuth, requirePermission } from '../../middleware/auth.js';
 import { validate } from '../../middleware/validate.js';
 import {
   listUsers,
@@ -11,8 +11,9 @@ import {
 
 const router = Router();
 
-// All user-management routes are Super Admin only.
-router.use(requireAuth, requireRole('SUPER_ADMIN'));
+// User-management routes require the "manage users" permission (Super Admin by
+// default; can be granted to others).
+router.use(requireAuth, requirePermission('canManageUsers'));
 
 router.get('/', listUsers);
 router.post('/', validate(createUserSchema), createUser);

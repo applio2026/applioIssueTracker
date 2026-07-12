@@ -3,16 +3,18 @@ import fs from 'node:fs';
 import { prisma } from '../../lib/prisma.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { notFound, forbidden, badRequest } from '../../utils/AppError.js';
+import { canAccessTicket, isManager } from './ticket.service.js';
 import { UPLOAD_DIR } from '../../middleware/upload.js';
 
-const isManager = (u) => ['ADMIN', 'SUPER_ADMIN'].includes(u.role);
-
 async function loadTicketWithAccess(ticketId, user) {
-  const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } });
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: ticketId },
+    include: { subTasks: { select: { assigneeId: true } } },
+  });
   if (!ticket) throw notFound('Ticket not found');
-  const allowed =
-    isManager(user) || ticket.requesterId === user.id || ticket.assigneeId === user.id;
-  if (!allowed) throw forbidden('You cannot access this ticket');
+  // Use the shared, permission- and department-aware access check so
+  // attachment access exactly matches who can view the ticket.
+  if (!canAccessTicket(user, ticket)) throw forbidden('You cannot access this ticket');
   return ticket;
 }
 

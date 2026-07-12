@@ -8,6 +8,9 @@ const transporter = env.smtp.host
       host: env.smtp.host,
       port: env.smtp.port,
       secure: env.smtp.port === 465,
+      // On non-implicit-TLS ports, require a STARTTLS upgrade so credentials
+      // and message content are never sent over a plaintext connection.
+      requireTLS: env.smtp.port !== 465,
       auth: env.smtp.user ? { user: env.smtp.user, pass: env.smtp.pass } : undefined,
     })
   : nodemailer.createTransport({ jsonTransport: true });

@@ -49,38 +49,54 @@ export async function computeSlaDueAt(categoryId, priority, from = new Date()) {
   return new Date(from.getTime() + hours * 60 * 60 * 1000);
 }
 
-export const isManager = (u) => ['ADMIN', 'SUPER_ADMIN'].includes(u.role);
+// Manager = can do manager actions (assign, change any status, edit any ticket,
+// see internal comments). Granted via the ADMIN/SUPER_ADMIN role or the
+// per-user "canManageTickets" permission.
+export const isManager = (u) =>
+  u.role === 'ADMIN' || u.role === 'SUPER_ADMIN' || !!u.permissions?.canManageTickets;
+
+// Category ids a user is department-scoped to. SUPER_ADMIN is never scoped.
+const scopedCategoryIds = (user) =>
+  user.role === 'SUPER_ADMIN' ? [] : user.allowedCategoryIds || [];
 
 // Build a Prisma `where` clause scoped to what the user is allowed to see.
 export function scopeWhereForUser(user) {
-  switch (user.role) {
-    case 'CUSTOMER':
-      return { requesterId: user.id };
-    case 'DEVELOPER':
-      // Developers see tickets assigned to them, that they raised, or where
-      // they own a sub-task.
-      return {
-        OR: [
-          { assigneeId: user.id },
-          { requesterId: user.id },
-          { subTasks: { some: { assigneeId: user.id } } },
-        ],
-      };
-    case 'ADMIN':
-    case 'SUPER_ADMIN':
-    default:
-      return {};
-  }
+  const cats = scopedCategoryIds(user);
+  const catFilter = cats.length ? { categoryId: { in: cats } } : null;
+
+  if (user.role === 'SUPER_ADMIN') return {};
+
+  // Managers see everything, or just their departments if scoped.
+  if (isManager(user)) return catFilter || {};
+
+  if (user.role === 'CUSTOMER') return { requesterId: user.id };
+
+  // Everyone else: their own/assigned/sub-task tickets, plus any ticket in a
+  // department they've been assigned to.
+  const or = [
+    { assigneeId: user.id },
+    { requesterId: user.id },
+    { subTasks: { some: { assigneeId: user.id } } },
+  ];
+  if (catFilter) or.push(catFilter);
+  return { OR: or };
 }
 
 // True if the user may view/collaborate on the ticket. `ticket.subTasks`
 // must be loaded (assigneeId is enough) for sub-task assignees to qualify.
 export function canAccessTicket(user, ticket) {
+  const cats = scopedCategoryIds(user);
+  const inDept = cats.length > 0 && ticket.categoryId != null && cats.includes(ticket.categoryId);
+
+  if (isManager(user)) {
+    // A department-scoped manager only reaches tickets in their departments.
+    return cats.length ? inDept : true;
+  }
   return (
-    isManager(user) ||
     ticket.requesterId === user.id ||
     ticket.assigneeId === user.id ||
-    (ticket.subTasks?.some((s) => s.assigneeId === user.id) ?? false)
+    (ticket.subTasks?.some((s) => s.assigneeId === user.id) ?? false) ||
+    inDept
   );
 }
 

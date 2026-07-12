@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import AppLayout from '../components/AppLayout.jsx';
 import { StatusBadge, PriorityBadge } from '../components/Badges.jsx';
 import { useTickets, useCategories } from '../features/tickets/api.js';
+import { useAuth } from '../features/auth/useAuth.js';
 import { ALL_STATUSES, PRIORITIES, STATUS_META } from '../features/tickets/constants.js';
 import NewTicketModal from '../features/tickets/NewTicketModal.jsx';
 
@@ -21,6 +22,8 @@ function timeAgo(iso) {
 
 export default function TicketsPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canRaise = user.permissions?.canRaiseTickets;
   const [params] = useSearchParams();
   // Dashboard drill-downs land here with filters in the URL.
   const [filters, setFilters] = useState(() => ({
@@ -60,9 +63,11 @@ export default function TicketsPage() {
           <h2 className="text-lg font-bold text-slate-800">Tickets</h2>
           <p className="text-sm text-slate-400">{tickets?.length ?? 0} ticket(s)</p>
         </div>
-        <button onClick={() => setShowNew(true)} className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand/90">
-          ➕ Raise a Ticket
-        </button>
+        {canRaise && (
+          <button onClick={() => setShowNew(true)} className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand/90">
+            ➕ Raise a Ticket
+          </button>
+        )}
       </div>
 
       {/* Filters */}

@@ -138,6 +138,9 @@ export const getTicket = asyncHandler(async (req, res) => {
 
 // POST /api/tickets
 export const createTicket = asyncHandler(async (req, res) => {
+  if (!req.user.permissions?.canRaiseTickets) {
+    throw forbidden('You do not have permission to raise tickets');
+  }
   const { title, description, categoryId, priority } = req.body;
   const slaDueAt = await computeSlaDueAt(categoryId, priority);
 

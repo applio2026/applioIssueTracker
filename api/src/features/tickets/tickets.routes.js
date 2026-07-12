@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAuth, requireRole } from '../../middleware/auth.js';
+import { requireAuth, requirePermission } from '../../middleware/auth.js';
 import { validate } from '../../middleware/validate.js';
 import { upload } from '../../middleware/upload.js';
 import {
@@ -46,7 +46,7 @@ router.post('/', validate(createTicketSchema), createTicket);
 router.get('/:id', getTicket);
 router.patch('/:id', validate(updateTicketSchema), updateTicket);
 router.patch('/:id/status', validate(statusSchema), changeStatus);
-router.patch('/:id/assign', requireRole('ADMIN', 'SUPER_ADMIN'), validate(assignSchema), assignTicket);
+router.patch('/:id/assign', requirePermission('canManageTickets'), validate(assignSchema), assignTicket);
 router.post('/:id/comments', validate(commentSchema), addComment);
 
 // Sub-tasks
