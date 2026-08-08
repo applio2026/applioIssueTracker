@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../features/auth/useAuth.js';
 import NotificationBell from './NotificationBell.jsx';
+import ChangePasswordModal from './ChangePasswordModal.jsx';
 
 const ROLE_LABEL = {
   CUSTOMER: 'Customer',
@@ -25,6 +27,7 @@ const linkActive = 'bg-brand-light/20 text-white font-semibold';
 export default function AppLayout({ children }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [changingPassword, setChangingPassword] = useState(false);
 
   const isStaff = ['DEVELOPER', 'ADMIN', 'SUPER_ADMIN'].includes(user.role);
   const p = user.permissions || {};
@@ -92,14 +95,22 @@ export default function AppLayout({ children }) {
             <div className="text-xs text-slate-400">{ROLE_LABEL[user.role]}</div>
           </div>
           <button
-            onClick={handleLogout}
+            onClick={() => setChangingPassword(true)}
             className="ml-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100"
+          >
+            Change Password
+          </button>
+          <button
+            onClick={handleLogout}
+            className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100"
           >
             Logout
           </button>
         </header>
         <main className="flex-1 overflow-auto p-6">{children}</main>
       </div>
+
+      {changingPassword && <ChangePasswordModal onClose={() => setChangingPassword(false)} />}
     </div>
   );
 }

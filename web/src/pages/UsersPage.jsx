@@ -87,6 +87,7 @@ export default function UsersPage() {
   const { data: categories } = useCategories();
   const [form, setForm] = useState(EMPTY);
   const [editing, setEditing] = useState(null); // user being edited
+  const [resetting, setResetting] = useState(null); // user whose password is being reset
   const [msg, setMsg] = useState(null);
 
   const { data, isLoading } = useQuery({
@@ -178,6 +179,13 @@ export default function UsersPage() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <button onClick={() => setEditing(u)} className="mr-3 text-xs font-medium text-brand hover:underline">Edit</button>
+                    {/* Only a Super Admin may touch another Super Admin's account
+                        (the API enforces this too — see guardEscalation). */}
+                    {(canGrantManageUsers || u.role !== 'SUPER_ADMIN') && (
+                      <button onClick={() => setResetting(u)} className="mr-3 text-xs font-medium text-brand hover:underline">
+                        Reset password
+                      </button>
+                    )}
                     <button onClick={() => toggleActive(u)} className="text-xs font-medium text-slate-500 hover:underline">
                       {u.isActive ? 'Disable' : 'Enable'}
                     </button>
@@ -240,7 +248,114 @@ export default function UsersPage() {
           onSaved={() => { qc.invalidateQueries({ queryKey: ['users'] }); setEditing(null); }}
         />
       )}
+
+      {resetting && (
+        <ResetPasswordModal
+          user={resetting}
+          isSelf={resetting.id === me.id}
+          onClose={() => setResetting(null)}
+        />
+      )}
     </AppLayout>
+  );
+}
+
+// Admin-initiated reset: sets a new password directly, without knowing the old
+// one. Users changing their own password use the header's Change Password
+// dialog, which requires the current password.
+function ResetPasswordModal({ user, isSelf, onClose }) {
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [err, setErr] = useState('');
+  const [done, setDone] = useState(false);
+
+  const save = useMutation({
+    mutationFn: (payload) => api.patch(`/users/${user.id}`, payload),
+    onSuccess: () => setDone(true),
+    onError: (e) => setErr(e.response?.data?.error || 'Failed to reset the password.'),
+  });
+
+  const submit = (e) => {
+    e.preventDefault();
+    setErr('');
+    if (password !== confirm) return setErr('The two passwords do not match.');
+    save.mutate({ password });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={onClose}>
+      <form
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={submit}
+        className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl"
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-slate-800">Reset Password</h3>
+            <p className="text-xs text-slate-400">{user.name} — {user.email}</p>
+          </div>
+          <button type="button" onClick={onClose} className="text-lg text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+
+        {done ? (
+          <>
+            <div className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+              Password reset. Share the new password with {isSelf ? 'yourself' : user.name.split(' ')[0]} securely —
+              it is not emailed automatically.
+            </div>
+            <div className="flex justify-end">
+              <button type="button" onClick={onClose} className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand/90">
+                Done
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            {err && <div className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{err}</div>}
+            {isSelf && (
+              <div className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                This is your own account — you will keep using this session, but the new password
+                applies at your next sign-in.
+              </div>
+            )}
+
+            <Field label="New Password *">
+              <input
+                required
+                autoFocus
+                type="password"
+                minLength={6}
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={inputCls}
+                placeholder="min 6 characters"
+              />
+            </Field>
+            <Field label="Confirm New Password *">
+              <input
+                required
+                type="password"
+                minLength={6}
+                autoComplete="new-password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                className={inputCls}
+              />
+            </Field>
+
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">
+                Cancel
+              </button>
+              <button type="submit" disabled={save.isPending} className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand/90 disabled:opacity-60">
+                {save.isPending ? 'Resetting…' : 'Reset password'}
+              </button>
+            </div>
+          </>
+        )}
+      </form>
+    </div>
   );
 }
 

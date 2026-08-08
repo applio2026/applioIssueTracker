@@ -18,5 +18,12 @@ export function useAuth() {
     }
   };
 
-  return { user, accessToken, isAuthenticated: !!user, login, logout };
+  // The API returns a fresh token pair, so changing the password does not
+  // sign the current device out.
+  const changePassword = async (currentPassword, newPassword) => {
+    const { data } = await api.post('/auth/change-password', { currentPassword, newPassword });
+    setAuth(data.accessToken, data.user);
+  };
+
+  return { user, accessToken, isAuthenticated: !!user, login, logout, changePassword };
 }

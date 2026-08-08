@@ -10,6 +10,17 @@ export const loginLimiter = rateLimit({
   message: { error: 'Too many login attempts. Please try again in 15 minutes.' },
 });
 
+// Password changes verify the current password, so they are a credential
+// endpoint too. Kept separate from loginLimiter so a burst of failed change
+// attempts can't lock the same IP out of signing in.
+export const passwordChangeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many password change attempts. Please try again in 15 minutes.' },
+});
+
 // Public website forms (demo requests): plenty for a human, hostile to scripts.
 export const publicFormLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

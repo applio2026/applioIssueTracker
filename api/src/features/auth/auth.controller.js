@@ -116,6 +116,42 @@ export const logout = asyncHandler(async (req, res) => {
   res.json({ ok: true });
 });
 
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1),
+    // min 6 matches the length the Users screen enforces when an admin sets a
+    // password, so the two paths can't disagree about what is acceptable.
+    newPassword: z.string().min(6),
+  })
+  .refine((d) => d.currentPassword !== d.newPassword, {
+    message: 'New password must be different from the current one',
+    path: ['newPassword'],
+  });
+
+// POST /api/auth/change-password — any signed-in user changes their own
+// password. Knowing the current password is required, so a stolen access token
+// on its own can't be used to take the account over permanently.
+export const changePassword = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+  if (!user || !user.isActive) throw unauthorized();
+
+  const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+  if (!ok) throw badRequest('Current password is incorrect');
+
+  const updated = await prisma.user.update({
+    where: { id: user.id },
+    data: { passwordHash: await bcrypt.hash(newPassword, 10) },
+  });
+
+  // Hand back a fresh token pair so the caller stays signed in on this device.
+  // Refresh tokens are stateless JWTs, so sessions already issued elsewhere
+  // survive until they expire — this is not a "sign out everywhere".
+  res.cookie(REFRESH_COOKIE, signRefreshToken(updated), cookieOpts);
+  res.json({ accessToken: signAccessToken(updated), user: publicUser(updated) });
+});
+
 // GET /api/auth/me — current user
 export const me = asyncHandler(async (req, res) => {
   const user = await prisma.user.findUnique({ where: { id: req.user.id } });
